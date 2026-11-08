@@ -24,7 +24,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     private var presentationContext: WebAuthPresentationContext?
 
     private static let tokenKey = "spotify.tokens"
-    private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played"
+    private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played user-modify-playback-state"
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -257,6 +257,56 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
         }
     }
 
+    // MARK: - Playback control
+
+    /// Starts a track on the user's active Spotify device, `positionSeconds` in.
+    func startPlayback(trackID: String, positionSeconds: Double) async throws {
+        guard connectionState.isConnected else { throw SpotifyError.notConnected }
+        let token = try await refreshIfNeeded()
+        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/play")!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "uris": ["spotify:track:\(trackID)"],
+            "position_ms": Int(max(0, positionSeconds) * 1000),
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        try await sendPlayerCommand(request)
+    }
+
+    /// Pauses playback on the user's active Spotify device.
+    func pausePlayback() async throws {
+        guard connectionState.isConnected else { return }
+        let token = try await refreshIfNeeded()
+        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/pause")!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        try await sendPlayerCommand(request)
+    }
+
+    private func sendPlayerCommand(_ request: URLRequest) async throws {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return }
+        switch http.statusCode {
+        case 200..<300:
+            return
+        case 401:
+            disconnect()
+            throw SpotifyError.notConnected
+        case 403:
+            throw SpotifyError.playbackUnavailable(
+                "Spotify needs a fresh sign-in to allow playback: disconnect and reconnect it in Settings. Playback also requires Spotify Premium."
+            )
+        case 404:
+            throw SpotifyError.playbackUnavailable(
+                "Open Spotify and play anything so it has an active device, then try again."
+            )
+        default:
+            throw SpotifyError.httpError(String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)")
+        }
+    }
+
     struct RecentPlay: Sendable {
         var trackID: String
         var title: String
@@ -324,9 +374,12 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
         case stateMismatch
         case authorizationFailed(String)
         case httpError(String)
+        case playbackUnavailable(String)
 
         var errorDescription: String? {
             switch self {
+            case .playbackUnavailable(let reason):
+                reason
             case .missingClientID:
                 "Enter your Spotify Client ID in Settings first."
             case .notConnected:

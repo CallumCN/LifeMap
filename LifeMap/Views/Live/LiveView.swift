@@ -6,7 +6,6 @@ import CoreLocation
 /// and a bubble at the top naming whatever is playing right now.
 struct LiveView: View {
     @Environment(TrackingCoordinator.self) private var coordinator
-    @Environment(AppSettings.self) private var settings
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
 
     var body: some View {
@@ -44,8 +43,6 @@ struct LiveView: View {
 
     private var controlPanel: some View {
         VStack(spacing: 12) {
-            statusRow
-
             Button {
                 coordinator.toggleManualTracking()
             } label: {
@@ -70,38 +67,8 @@ struct LiveView: View {
                     .foregroundStyle(.orange)
             }
         }
-        .padding()
-        .glassEffect(in: .rect(cornerRadius: 24))
         .padding(.horizontal)
         .padding(.bottom, 8)
-    }
-
-    private var statusRow: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(coordinator.isTracking ? Color.red : Color.secondary)
-                .frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(coordinator.isTracking ? "Recording" : "Idle")
-                    .font(.subheadline.weight(.semibold))
-                Text(statusDetail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if let startedAt = coordinator.trackingStartedAt {
-                Text(startedAt, style: .timer)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var statusDetail: String {
-        if coordinator.isTracking, let trip = coordinator.recorder.currentTrip {
-            return "\(Formatters.distance(trip.distanceMeters)) · \(trip.pointCount) points"
-        }
-        return "Mode: \(settings.trackingMode.displayName)"
     }
 }
 

@@ -18,8 +18,10 @@ struct TripRowView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(trip.startDate, format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+                    Text(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
                         .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     if trip.isActive {
                         Text("LIVE")
                             .font(.caption2.bold())

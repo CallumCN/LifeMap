@@ -17,6 +17,8 @@ final class TrackingCoordinator {
     let appleMusic: AppleMusicNowPlayingProvider
     let spotify: SpotifyNowPlayingProvider
     let youtubeMusic: YouTubeMusicNowPlayingProvider
+    /// Replays recorded songs on their original service.
+    let playback: MusicPlaybackService
 
     /// Why the current trip is being recorded, or `nil` when idle.
     private(set) var activeTrigger: TrackingTrigger?
@@ -30,8 +32,10 @@ final class TrackingCoordinator {
         self.recorder = TripRecorder(modelContext: modelContext)
         self.liveShare = LiveShareService(settings: settings)
         self.appleMusic = AppleMusicNowPlayingProvider()
-        self.spotify = SpotifyNowPlayingProvider(settings: settings)
+        let spotify = SpotifyNowPlayingProvider(settings: settings)
+        self.spotify = spotify
         self.youtubeMusic = YouTubeMusicNowPlayingProvider()
+        self.playback = MusicPlaybackService(spotify: spotify)
 
         location.onLocation = { [weak self] location in
             self?.handle(location: location)

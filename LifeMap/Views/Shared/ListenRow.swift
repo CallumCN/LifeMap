@@ -4,9 +4,17 @@ import SwiftUI
 struct ListenRow: View {
     let listen: ListeningEvent
     var isHighlighted = false
+    /// Colour matching this song's stretch of the route on the map, when shown alongside one.
+    var accent: Color?
 
     var body: some View {
         HStack(spacing: 12) {
+            if let accent {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 10, height: 10)
+                    .accessibilityHidden(true)
+            }
             ArtworkThumbnail(url: listen.artworkURL, source: listen.source)
                 .frame(width: 48, height: 48)
 
@@ -45,7 +53,7 @@ struct ListenRow: View {
             }
         }
         .padding(.vertical, 2)
-        .listRowBackground(isHighlighted ? Color.accentColor.opacity(0.08) : nil)
+        .listRowBackground(isHighlighted ? Color.accentColor.opacity(0.12) : Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(listen.title) by \(listen.artist), \(Formatters.percent(listen.fractionListened)) listened, \(listen.source.displayName)")
     }
