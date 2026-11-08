@@ -20,27 +20,7 @@ struct TripsMapView: View {
         NavigationStack {
             Map(position: $position, selection: $selection) {
                 ForEach(filteredTrips) { trip in
-                    let coordinates = trip.coordinates
-                    if coordinates.count > 1 {
-                        MapPolyline(coordinates: coordinates)
-                            .stroke(TripPalette.color(for: trip), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-                    }
-                    if let start = coordinates.first {
-                        Annotation(trip.startDate.formatted(date: .abbreviated, time: .shortened), coordinate: start, anchor: .center) {
-                            TripStartDot(color: TripPalette.color(for: trip), isSelected: selection == .trip(trip.id))
-                        }
-                        .tag(MapSelectionItem.trip(trip.id))
-                    }
-                    if showSongPins {
-                        ForEach(filter.matchingListens(in: trip)) { listen in
-                            if let coordinate = listen.startCoordinate ?? trip.nearestPoint(to: listen.startedAt)?.coordinate {
-                                Annotation(listen.title, coordinate: coordinate, anchor: .bottom) {
-                                    SongPin(listen: listen, isSelected: selection == .listen(listen.id))
-                                }
-                                .tag(MapSelectionItem.listen(listen.id))
-                            }
-                        }
-                    }
+                    tripContent(for: trip)
                 }
                 UserAnnotation()
             }
@@ -93,6 +73,45 @@ struct TripsMapView: View {
                 selection = nil
                 position = .automatic
             }
+        }
+    }
+
+    /// The path, start marker, and song pins for one trip. Split out of `body` so the
+    /// compiler can type-check the map content in reasonable time.
+    @MapContentBuilder
+    private func tripContent(for trip: Trip) -> some MapContent {
+        let coordinates = trip.coordinates
+        let color = TripPalette.color(for: trip)
+        let tripItem = MapSelectionItem.trip(trip.id)
+        let startLabel = trip.startDate.formatted(date: .abbreviated, time: .shortened)
+
+        if coordinates.count > 1 {
+            MapPolyline(coordinates: coordinates)
+                .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        }
+        if let start = coordinates.first {
+            Annotation(startLabel, coordinate: start, anchor: .center) {
+                TripStartDot(color: color, isSelected: selection == tripItem)
+            }
+            .tag(tripItem)
+        }
+        if showSongPins {
+            ForEach(filter.matchingListens(in: trip)) { listen in
+                songPin(for: listen, in: trip)
+            }
+        }
+    }
+
+    /// One song marker, placed where the song started or at the nearest recorded point.
+    @MapContentBuilder
+    private func songPin(for listen: ListeningEvent, in trip: Trip) -> some MapContent {
+        let coordinate = listen.startCoordinate ?? trip.nearestPoint(to: listen.startedAt)?.coordinate
+        if let coordinate {
+            let listenItem = MapSelectionItem.listen(listen.id)
+            Annotation(listen.title, coordinate: coordinate, anchor: .bottom) {
+                SongPin(listen: listen, isSelected: selection == listenItem)
+            }
+            .tag(listenItem)
         }
     }
 
