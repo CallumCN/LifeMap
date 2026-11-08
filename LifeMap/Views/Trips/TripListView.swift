@@ -9,9 +9,18 @@ struct TripListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(TrackingCoordinator.self) private var coordinator
     @State private var showingFilters = false
+    /// Trips the user has asked to delete, awaiting confirmation.
+    @State private var tripsPendingDeletion: [Trip] = []
 
     private var filteredTrips: [Trip] {
         filter.apply(to: trips)
+    }
+
+    private var isConfirmingDeletion: Binding<Bool> {
+        Binding(
+            get: { !tripsPendingDeletion.isEmpty },
+            set: { if !$0 { tripsPendingDeletion = [] } }
+        )
     }
 
     var body: some View {
@@ -30,8 +39,16 @@ struct TripListView: View {
                         NavigationLink(value: trip) {
                             TripRowView(trip: trip, filter: filter)
                         }
+                        // The trip being recorded can't be deleted until tracking stops.
+                        .deleteDisabled(trip.isActive)
+                        .contextMenu {
+                            Button("Delete Trip", systemImage: "trash", role: .destructive) {
+                                tripsPendingDeletion = [trip]
+                            }
+                            .disabled(trip.isActive)
+                        }
                     }
-                    .onDelete(perform: delete)
+                    .onDelete(perform: requestDeletion)
                 }
             }
             .overlay {
@@ -56,6 +73,11 @@ struct TripListView: View {
             }
             .searchable(text: $filter.songQuery, prompt: "Song, artist, or album")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !trips.isEmpty {
+                        EditButton()
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingFilters = true
@@ -68,18 +90,49 @@ struct TripListView: View {
                 TripFilterSheet(filter: $filter)
                     .presentationDetents([.medium, .large])
             }
+            .confirmationDialog(deletionTitle, isPresented: isConfirmingDeletion, titleVisibility: .visible) {
+                Button(deletionButtonTitle, role: .destructive, action: deletePendingTrips)
+            } message: {
+                Text(deletionMessage)
+            }
         }
     }
 
-    private func delete(at offsets: IndexSet) {
+    // MARK: - Deletion
+
+    /// Called by swipe-to-delete and edit mode; asks for confirmation before removing anything.
+    private func requestDeletion(at offsets: IndexSet) {
         let visible = filteredTrips
-        for index in offsets {
-            let trip = visible[index]
-            // Never delete the trip that's being recorded.
-            if trip.isActive { continue }
+        tripsPendingDeletion = offsets.compactMap { visible.indices.contains($0) ? visible[$0] : nil }
+    }
+
+    private func deletePendingTrips() {
+        for trip in tripsPendingDeletion where !trip.isActive {
             modelContext.delete(trip)
         }
-        try? modelContext.save()
+        tripsPendingDeletion = []
+        do {
+            try modelContext.save()
+        } catch {
+            assertionFailure("Failed to delete trips: \(error)")
+        }
+    }
+
+    private var deletionTitle: String {
+        tripsPendingDeletion.count == 1 ? "Delete this trip?" : "Delete \(tripsPendingDeletion.count) trips?"
+    }
+
+    private var deletionButtonTitle: String {
+        tripsPendingDeletion.count == 1 ? "Delete Trip" : "Delete \(tripsPendingDeletion.count) Trips"
+    }
+
+    private var deletionMessage: String {
+        if let trip = tripsPendingDeletion.first, tripsPendingDeletion.count == 1 {
+            let when = trip.startDate.formatted(date: .abbreviated, time: .shortened)
+            let songs = trip.listens.count == 1 ? "1 song" : "\(trip.listens.count) songs"
+            return "\(when) · \(Formatters.distance(trip.distanceMeters)) · \(songs). The path and its songs will be removed. This can't be undone."
+        }
+        return "Their paths and songs will be removed. This can't be undone."
     }
 }
 
