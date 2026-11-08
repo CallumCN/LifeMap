@@ -4,10 +4,10 @@ import SwiftData
 /// All recorded trips, newest first, filterable by song and fraction listened.
 struct TripListView: View {
     @Binding var filter: TripFilter
+    @Binding var selectedTab: AppTab
 
     @Query(sort: \Trip.startDate, order: .reverse) private var trips: [Trip]
     @Environment(\.modelContext) private var modelContext
-    @Environment(TrackingCoordinator.self) private var coordinator
     @State private var showingFilters = false
     /// Trips the user has asked to delete, awaiting confirmation.
     @State private var tripsPendingDeletion: [Trip] = []
@@ -56,10 +56,10 @@ struct TripListView: View {
                     ContentUnavailableView {
                         Label("No trips yet", systemImage: "map")
                     } description: {
-                        Text("Start tracking from the Live tab, or choose an automatic mode in Settings.")
+                        Text("Begin a trip from the Live tab, or choose an automatic mode in Settings.")
                     } actions: {
-                        Button("Start tracking") {
-                            coordinator.startTracking(trigger: .manual)
+                        Button("Begin trip") {
+                            selectedTab = .live
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -90,8 +90,9 @@ struct TripListView: View {
                 TripFilterSheet(filter: $filter)
                     .presentationDetents([.medium, .large])
             }
-            .confirmationDialog(deletionTitle, isPresented: isConfirmingDeletion, titleVisibility: .visible) {
+            .alert(deletionTitle, isPresented: isConfirmingDeletion) {
                 Button(deletionButtonTitle, role: .destructive, action: deletePendingTrips)
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text(deletionMessage)
             }
@@ -130,7 +131,7 @@ struct TripListView: View {
         if let trip = tripsPendingDeletion.first, tripsPendingDeletion.count == 1 {
             let when = trip.startDate.formatted(date: .abbreviated, time: .shortened)
             let songs = trip.listens.count == 1 ? "1 song" : "\(trip.listens.count) songs"
-            return "\(when) · \(Formatters.distance(trip.distanceMeters)) · \(songs). The path and its songs will be removed. This can't be undone."
+            return "\(when) · \(Formatters.distance(trip.distanceMeters)) · \(songs)\nThis can't be undone."
         }
         return "Their paths and songs will be removed. This can't be undone."
     }

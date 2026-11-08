@@ -131,6 +131,15 @@ final class ListeningTracker {
             }
         }
 
+        // Only start a new play once the track is actually playing. A paused or stopped
+        // track with no play in progress is just whatever the music app last had loaded,
+        // which can be a song left half-finished months ago.
+        guard snapshot.isPlaying else {
+            current = nil
+            currentListenedSeconds = 0
+            return
+        }
+
         // Start a new play.
         let seed = snapshot.positionSeconds ?? 0
         active = ActiveListen(

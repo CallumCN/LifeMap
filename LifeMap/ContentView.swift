@@ -1,21 +1,30 @@
 import SwiftUI
 import SwiftData
 
+/// The app's top-level tabs, so views can send the user to another tab.
+enum AppTab: Hashable {
+    case trips
+    case map
+    case live
+    case settings
+}
+
 struct ContentView: View {
     @State private var filter = TripFilter()
+    @State private var selectedTab: AppTab = .trips
 
     var body: some View {
-        TabView {
-            Tab("Trips", systemImage: "list.bullet.rectangle") {
-                TripListView(filter: $filter)
+        TabView(selection: $selectedTab) {
+            Tab("Trips", systemImage: "list.bullet.rectangle", value: .trips) {
+                TripListView(filter: $filter, selectedTab: $selectedTab)
             }
-            Tab("Map", systemImage: "map") {
+            Tab("Map", systemImage: "map", value: .map) {
                 TripsMapView(filter: $filter)
             }
-            Tab("Live", systemImage: "dot.radiowaves.left.and.right") {
+            Tab("Live", systemImage: "dot.radiowaves.left.and.right", value: .live) {
                 LiveView()
             }
-            Tab("Settings", systemImage: "gear") {
+            Tab("Settings", systemImage: "gear", value: .settings) {
                 SettingsView()
             }
         }

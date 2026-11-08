@@ -18,7 +18,7 @@ struct LiveView: View {
                         coordinator.toggleManualTracking()
                     } label: {
                         Label(
-                            coordinator.isTracking ? "Stop tracking" : "Start tracking",
+                            coordinator.isTracking ? "End trip" : "Begin trip",
                             systemImage: coordinator.isTracking ? "stop.circle.fill" : "record.circle"
                         )
                         .frame(maxWidth: .infinity)
@@ -124,7 +124,7 @@ struct LiveView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Tap Start to record a trip now.")
+                    Text("Tap Begin trip to record one now.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
