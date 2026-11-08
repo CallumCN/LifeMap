@@ -9,8 +9,6 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var errorMessage: String?
-    @State private var importMessage: String?
-    @State private var isImporting = false
     @State private var confirmDeleteAll = false
 
     var body: some View {
@@ -96,44 +94,6 @@ struct SettingsView: View {
         } footer: {
             Text("Apple Music reads the system player, so it also covers songs from your library. Spotify opens a sign-in page in an in-app browser. YouTube Music has no public API for playback or history.")
         }
-
-        Section {
-            Button {
-                Task { await importSpotifyHistory() }
-            } label: {
-                if isImporting {
-                    ProgressView()
-                } else {
-                    Label("Import recent Spotify plays", systemImage: "arrow.down.circle")
-                }
-            }
-            .disabled(isImporting || !coordinator.spotify.connectionState.isConnected)
-            if let importMessage {
-                Text(importMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("Spotify")
-        } footer: {
-            Text("Importing fetches up to 50 recently played tracks and attaches them to trips that were being recorded at the time. Spotify only reports tracks played for 30 seconds or more and doesn't say how much was heard, so imported plays are marked as estimated.")
-        }
-
-        Section {
-            TextField("Custom Spotify Client ID", text: settings.spotifyClientID)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.callout.monospaced())
-            LabeledContent("Redirect URI") {
-                Text(AppSettings.spotifyRedirectURI)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-            }
-        } header: {
-            Text("Developer")
-        } footer: {
-            Text("Leave blank to use LifeMap's built-in Spotify app. Only set this if you've registered your own app at developer.spotify.com with the redirect URI above. Disconnect and reconnect Spotify after changing it.")
-        }
     }
 
     @ViewBuilder
@@ -209,19 +169,6 @@ struct SettingsView: View {
                 }
             }
         )
-    }
-
-    private func importSpotifyHistory() async {
-        isImporting = true
-        defer { isImporting = false }
-        do {
-            let since = Date().addingTimeInterval(-7 * 24 * 3600)
-            let plays = try await coordinator.spotify.recentlyPlayed(after: since)
-            let inserted = coordinator.recorder.importHistory(plays)
-            importMessage = "Fetched \(plays.count) plays, attached \(inserted) to trips."
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     private func deleteAllTrips() {

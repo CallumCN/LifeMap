@@ -12,7 +12,6 @@ final class AppSettings {
         static let enabledSources = "enabledSources"
         static let liveShareEnabled = "liveShareEnabled"
         static let liveShareEndpoint = "liveShareEndpoint"
-        static let spotifyClientID = "spotifyClientID"
         static let highPrecision = "highPrecision"
         static let idleStopMinutes = "idleStopMinutes"
     }
@@ -40,17 +39,6 @@ final class AppSettings {
         didSet { defaults.set(liveShareEndpoint, forKey: Key.liveShareEndpoint) }
     }
 
-    /// Optional override for the built-in Spotify client ID, for developers testing
-    /// against their own Spotify app. Leave empty to use `spotifyDefaultClientID`.
-    var spotifyClientID: String {
-        didSet { defaults.set(spotifyClientID, forKey: Key.spotifyClientID) }
-    }
-
-    /// The client ID actually used for Spotify sign-in: the override if set, else the built-in one.
-    var effectiveSpotifyClientID: String {
-        let override = spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        return override.isEmpty ? Self.spotifyDefaultClientID : override
-    }
 
     /// When true, requests navigation-grade location fixes; otherwise fitness-grade (less battery).
     var highPrecision: Bool {
@@ -73,7 +61,6 @@ final class AppSettings {
             ?? Set(MusicSource.allCases)
         liveShareEnabled = defaults.bool(forKey: Key.liveShareEnabled)
         liveShareEndpoint = defaults.string(forKey: Key.liveShareEndpoint) ?? ""
-        spotifyClientID = defaults.string(forKey: Key.spotifyClientID) ?? ""
         highPrecision = defaults.object(forKey: Key.highPrecision) as? Bool ?? true
         let idle = defaults.integer(forKey: Key.idleStopMinutes)
         idleStopMinutes = idle == 0 ? 5 : idle
@@ -84,5 +71,5 @@ final class AppSettings {
 
     /// Client ID of the LifeMap app registered at developer.spotify.com. The app uses the
     /// PKCE flow, so this is public and no client secret is ever stored on the device.
-    static let spotifyDefaultClientID = "28af32200f0340e1b8eb6ea3e0b3a1de"
+    static let spotifyClientID = "28af32200f0340e1b8eb6ea3e0b3a1de"
 }
