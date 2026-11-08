@@ -19,6 +19,8 @@ final class TripReplayer {
     private var task: Task<Void, Never>?
 
     private static let tick: Duration = .milliseconds(250)
+    /// If a song was first seen within this many seconds of its start, replay it from the top.
+    private static let leadInThreshold: Double = 5
 
     init(trip: Trip, playback: MusicPlaybackService) {
         self.trip = trip
@@ -46,6 +48,7 @@ final class TripReplayer {
         task = Task { [weak self] in
             var lastTick = Date()
             var playingListenID: UUID? = UUID()  // Sentinel so the first song always starts.
+            var playingSegment = -1
             while let self, !Task.isCancelled {
                 let now = Date()
                 let elapsed = now.timeIntervalSince(lastTick)
@@ -58,13 +61,48 @@ final class TripReplayer {
                 }
                 self.update(to: position)
 
-                if self.currentListen?.id != playingListenID {
-                    playingListenID = self.currentListen?.id
-                    await self.startMusic(for: self.currentListen, at: position)
+                if let listen = self.currentListen {
+                    let playhead = self.playhead(for: listen, at: position)
+                    if listen.id != playingListenID {
+                        // A different song: start it where the recording says it was.
+                        playingListenID = listen.id
+                        playingSegment = playhead.segment
+                        await self.playback.play(listen, offsetSeconds: playhead.offset)
+                    } else if playhead.segment != playingSegment {
+                        // Same song, but the recording jumped here: reproduce the skip.
+                        playingSegment = playhead.segment
+                        await self.playback.seek(to: playhead.offset)
+                    }
+                } else if playingListenID != nil {
+                    playingListenID = nil
+                    playingSegment = -1
+                    await self.playback.stop()
                 }
                 try? await Task.sleep(for: Self.tick)
             }
         }
+    }
+
+    /// Where the song's playhead was at a moment of the trip, following the recorded
+    /// stretches in order so that skips are reproduced. Returns which stretch the moment
+    /// falls in, so callers can detect when a jump happens.
+    private func playhead(for listen: ListeningEvent, at date: Date) -> (segment: Int, offset: Double) {
+        var elapsed = max(0, date.timeIntervalSince(listen.startedAt))
+        var ranges = listen.observedRanges
+        guard !ranges.isEmpty else { return (0, elapsed) }
+
+        // A song caught just after it began is treated as heard from the top.
+        if ranges[0].start <= Self.leadInThreshold {
+            ranges[0].start = 0
+        }
+        for (index, range) in ranges.enumerated() {
+            let isLast = index == ranges.count - 1
+            if elapsed < range.length || isLast {
+                return (index, range.start + elapsed)
+            }
+            elapsed -= range.length
+        }
+        return (ranges.count - 1, ranges[ranges.count - 1].end)
     }
 
     /// Jumps to the moment a song began and plays from there.
@@ -93,16 +131,5 @@ final class TripReplayer {
         currentDate = date
         currentCoordinate = RouteMath.coordinate(at: date, in: points)
         currentListen = listens.first { $0.startedAt <= date && date <= $0.endedAt }
-    }
-
-    private func startMusic(for listen: ListeningEvent?, at date: Date) async {
-        guard let listen else {
-            await playback.stop()
-            return
-        }
-        // The song's position at this moment: where it was first observed plus the time since.
-        let observedStart = listen.observedRanges.first?.start ?? 0
-        let offset = observedStart + date.timeIntervalSince(listen.startedAt)
-        await playback.play(listen, offsetSeconds: max(0, offset))
     }
 }

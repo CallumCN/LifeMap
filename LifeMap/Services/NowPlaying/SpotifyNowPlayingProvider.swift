@@ -275,6 +275,18 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
         try await sendPlayerCommand(request)
     }
 
+    /// Moves the playhead on the user's active Spotify device.
+    func seekPlayback(positionSeconds: Double) async throws {
+        guard connectionState.isConnected else { throw SpotifyError.notConnected }
+        let token = try await refreshIfNeeded()
+        var components = URLComponents(string: "https://api.spotify.com/v1/me/player/seek")!
+        components.queryItems = [URLQueryItem(name: "position_ms", value: String(Int(max(0, positionSeconds) * 1000)))]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        try await sendPlayerCommand(request)
+    }
+
     /// Pauses playback on the user's active Spotify device.
     func pausePlayback() async throws {
         guard connectionState.isConnected else { return }

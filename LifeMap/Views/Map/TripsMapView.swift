@@ -32,26 +32,22 @@ struct TripsMapView: View {
     var body: some View {
         NavigationStack(path: $path) {
             GeometryReader { proxy in
-                Map(position: $position, selection: $selectedTripID) {
-                    ForEach(filteredTrips) { trip in
-                        tripContent(for: trip)
+                ZStack(alignment: .bottom) {
+                    Map(position: $position, selection: $selectedTripID) {
+                        ForEach(filteredTrips) { trip in
+                            tripContent(for: trip)
+                        }
+                        UserAnnotation()
                     }
-                    UserAnnotation()
-                }
-                .mapStyle(.standard(pointsOfInterest: .excludingAll))
-                .mapControls {
-                    MapUserLocationButton()
-                    MapCompass()
-                    MapScaleView()
-                }
-                .overlay(alignment: .bottomLeading) {
-                    if let entry = selectedEntry {
-                        playButton(for: entry)
-                            .padding(.leading, 16)
-                            .padding(.bottom, 36)
+                    .mapStyle(.standard(pointsOfInterest: .excludingAll))
+                    .mapControls {
+                        MapUserLocationButton()
+                        MapCompass()
+                        MapScaleView()
                     }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // Fixed inset so the map doesn't re-fit while the panel is dragged.
+                    .safeAreaPadding(.bottom, BottomPanelMetrics.collapsedHeight)
+
                     BottomPanel(detent: $detent, availableHeight: proxy.size.height) {
                         Picker("Rank by", selection: $ranking) {
                             ForEach(RankingKind.allCases) { kind in
@@ -61,11 +57,14 @@ struct TripsMapView: View {
                         .pickerStyle(.segmented)
                     } content: {
                         rankingList
+                    } accessory: {
+                        if let entry = selectedEntry {
+                            playButton(for: entry)
+                        }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 8)
                 }
             }
+            .appTabBarInset()
             .overlay {
                 if trips.isEmpty {
                     ContentUnavailableView("No trips yet", systemImage: "map", description: Text("Recorded trips will appear here."))

@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Sizes other views need to lay out around a `BottomPanel`.
+enum BottomPanelMetrics {
+    /// Height of a collapsed panel: the grabber plus the header.
+    static let collapsedHeight: CGFloat = 84
+}
+
 /// Resting positions for `BottomPanel`.
 enum PanelDetent: CaseIterable {
     case collapsed
@@ -7,19 +13,55 @@ enum PanelDetent: CaseIterable {
     case full
 }
 
-/// A panel that floats over the bottom of a map and can be dragged between showing just
-/// its header, half the available height, and nearly all of it.
-struct BottomPanel<Header: View, Content: View>: View {
+/// A panel anchored to the bottom of a map that can be dragged between showing just its
+/// header, half the available height, and nearly all of it. It spans the full width with
+/// only its top corners rounded, so it reads as part of the screen rather than a card.
+///
+/// Place it in a `ZStack` over the map rather than as a safe-area inset, so the map's
+/// frame doesn't change while the panel is being dragged.
+struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     @Binding var detent: PanelDetent
     /// Height of the area the panel lives in, usually from a `GeometryReader` around the map.
     let availableHeight: CGFloat
-    @ViewBuilder let header: () -> Header
-    @ViewBuilder let content: () -> Content
+    /// When true, the background runs under the home indicator to the screen's bottom edge.
+    /// Leave false when another bar, such as the tab bar, sits beneath the panel.
+    var fillsToBottomEdge = false
+    let header: () -> Header
+    let content: () -> Content
+    /// A control that floats just above the panel's top-left corner and moves with it.
+    let accessory: () -> Accessory
 
     @State private var dragOffset: CGFloat = 0
 
-    /// Height needed to show the grabber and the header.
-    static var collapsedHeight: CGFloat { 84 }
+    init(
+        detent: Binding<PanelDetent>,
+        availableHeight: CGFloat,
+        fillsToBottomEdge: Bool = false,
+        @ViewBuilder header: @escaping () -> Header,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder accessory: @escaping () -> Accessory
+    ) {
+        self._detent = detent
+        self.availableHeight = availableHeight
+        self.fillsToBottomEdge = fillsToBottomEdge
+        self.header = header
+        self.content = content
+        self.accessory = accessory
+    }
+
+    init(
+        detent: Binding<PanelDetent>,
+        availableHeight: CGFloat,
+        fillsToBottomEdge: Bool = false,
+        @ViewBuilder header: @escaping () -> Header,
+        @ViewBuilder content: @escaping () -> Content
+    ) where Accessory == EmptyView {
+        self.init(detent: detent, availableHeight: availableHeight, fillsToBottomEdge: fillsToBottomEdge, header: header, content: content) {
+            EmptyView()
+        }
+    }
+
+    private static var collapsedHeight: CGFloat { BottomPanelMetrics.collapsedHeight }
 
     private func height(for detent: PanelDetent) -> CGFloat {
         switch detent {
@@ -59,9 +101,22 @@ struct BottomPanel<Header: View, Content: View>: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: currentHeight, alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .clipShape(RoundedRectangle(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+        .clipped()
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20)
+                .fill(.regularMaterial)
+                .overlay(alignment: .top) {
+                    UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20)
+                        .stroke(.separator, lineWidth: 0.5)
+                }
+                .ignoresSafeArea(edges: fillsToBottomEdge ? .bottom : [])
+        }
+        .overlay(alignment: .topLeading) {
+            // Sits above the panel, clear of the map attribution that hugs the panel's top edge.
+            accessory()
+                .padding(.leading, 16)
+                .alignmentGuide(.top) { dimensions in dimensions[.bottom] + 40 }
+        }
         .accessibilityAction(named: detent == .full ? "Collapse" : "Expand") {
             withAnimation(.snappy) {
                 detent = detent == .full ? .collapsed : .full

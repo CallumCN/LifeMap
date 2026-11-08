@@ -4,10 +4,12 @@ import SwiftData
 /// All recorded trips, newest first, filterable by song and fraction listened.
 struct TripListView: View {
     @Binding var filter: TripFilter
-    @Binding var selectedTab: AppTab
 
     @Query(sort: \Trip.startDate, order: .reverse) private var trips: [Trip]
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppNavigation.self) private var navigation
+    @State private var path: [Trip] = []
+    @State private var editMode: EditMode = .inactive
     @State private var showingFilters = false
     /// Trips the user has asked to delete, awaiting confirmation.
     @State private var tripsPendingDeletion: [Trip] = []
@@ -24,7 +26,7 @@ struct TripListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if !filter.isDefault {
                     Section {
@@ -36,9 +38,12 @@ struct TripListView: View {
 
                 Section {
                     ForEach(filteredTrips) { trip in
-                        NavigationLink(value: trip) {
+                        Button {
+                            path.append(trip)
+                        } label: {
                             TripRowView(trip: trip, filter: filter)
                         }
+                        .buttonStyle(.plain)
                         // The trip being recorded can't be deleted until tracking stops.
                         .deleteDisabled(trip.isActive)
                         .contextMenu {
@@ -51,6 +56,7 @@ struct TripListView: View {
                     .onDelete(perform: requestDeletion)
                 }
             }
+            .environment(\.editMode, $editMode)
             .overlay {
                 if trips.isEmpty {
                     ContentUnavailableView {
@@ -59,7 +65,7 @@ struct TripListView: View {
                         Text("Begin a trip from the Live tab, or choose an automatic mode in Settings.")
                     } actions: {
                         Button("Begin trip") {
-                            selectedTab = .live
+                            navigation.selectedTab = .live
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -67,25 +73,40 @@ struct TripListView: View {
                     ContentUnavailableView.search(text: filter.songQuery)
                 }
             }
+            .appTabBarInset()
+            // The title is drawn as a toolbar item so the buttons sit on the same line as it.
             .navigationTitle("Trips")
-            .navigationDestination(for: Trip.self) { trip in
-                TripDetailView(trip: trip, filter: filter)
-            }
-            .searchable(text: $filter.songQuery, prompt: "Song, artist, or album")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(removing: .title)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if !trips.isEmpty {
-                        EditButton()
-                    }
+                    Text("Trips")
+                        .font(.largeTitle.bold())
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityAddTraits(.isHeader)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                .sharedBackgroundVisibility(.hidden)
+
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         showingFilters = true
                     } label: {
                         Label("Filter", systemImage: filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                     }
+                    if !trips.isEmpty {
+                        Button(editMode.isEditing ? "Done" : "Manage") {
+                            withAnimation {
+                                editMode = editMode.isEditing ? .inactive : .active
+                            }
+                        }
+                    }
                 }
             }
+            .navigationDestination(for: Trip.self) { trip in
+                TripDetailView(trip: trip, filter: filter)
+            }
+            .searchable(text: $filter.songQuery, prompt: "Song, artist, or album")
             .sheet(isPresented: $showingFilters) {
                 TripFilterSheet(filter: $filter)
                     .presentationDetents([.medium, .large])
@@ -116,6 +137,9 @@ struct TripListView: View {
             try modelContext.save()
         } catch {
             assertionFailure("Failed to delete trips: \(error)")
+        }
+        if trips.isEmpty {
+            editMode = .inactive
         }
     }
 

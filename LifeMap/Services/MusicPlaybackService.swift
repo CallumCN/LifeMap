@@ -48,6 +48,23 @@ final class MusicPlaybackService {
         }
     }
 
+    /// Moves the playhead of the song this service started.
+    func seek(to offsetSeconds: Double) async {
+        guard let source = currentSource, isPlaying else { return }
+        switch source {
+        case .appleMusic:
+            ApplicationMusicPlayer.shared.playbackTime = max(0, offsetSeconds)
+        case .spotify:
+            do {
+                try await spotify.seekPlayback(positionSeconds: offsetSeconds)
+            } catch {
+                lastError = error.localizedDescription
+            }
+        case .youtubeMusic:
+            break
+        }
+    }
+
     /// Pauses whatever this service started.
     func stop() async {
         guard let source = currentSource else { return }

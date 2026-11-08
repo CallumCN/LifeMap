@@ -9,6 +9,7 @@ struct TripDetailView: View {
     var filter: TripFilter = TripFilter()
 
     @Environment(TrackingCoordinator.self) private var coordinator
+    @Environment(AppNavigation.self) private var navigation
     @State private var replayer: TripReplayer?
     @State private var segments: [RouteSegment] = []
     @State private var colors: [UUID: Color] = [:]
@@ -23,6 +24,41 @@ struct TripDetailView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            ZStack(alignment: .bottom) {
+                tripMap
+                    // Keep the map's controls and attribution above the collapsed panel. This is
+                    // a fixed inset so the map doesn't re-fit while the panel is dragged.
+                    .safeAreaPadding(.bottom, BottomPanelMetrics.collapsedHeight)
+
+                BottomPanel(detent: $detent, availableHeight: proxy.size.height, fillsToBottomEdge: true) {
+                    panelHeader
+                } content: {
+                    songList
+                } accessory: {
+                    replayButton
+                }
+            }
+        }
+        .navigationTitle(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            navigation.isTabBarHidden = true
+        }
+        .task {
+            let points = trip.orderedPoints
+            startCoordinate = points.first?.coordinate
+            endCoordinate = points.count > 1 ? points.last?.coordinate : nil
+            segments = trip.routeSegments()
+            colors = Dictionary(uniqueKeysWithValues: listens.enumerated().map { ($1.id, SongPalette.color(at: $0)) })
+            replayer = TripReplayer(trip: trip, playback: coordinator.playback)
+        }
+        .onDisappear {
+            replayer?.stop()
+            navigation.isTabBarHidden = false
+        }
+    }
+
+    private var tripMap: some View {
             Map(position: $position) {
                 ForEach(segments) { segment in
                     if segment.coordinates.count > 1 {
@@ -46,35 +82,6 @@ struct TripDetailView: View {
                 }
             }
             .mapStyle(.standard(pointsOfInterest: .excludingAll))
-            .overlay(alignment: .bottomLeading) {
-                replayButton
-                    .padding(.leading, 16)
-                    .padding(.bottom, 36)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                BottomPanel(detent: $detent, availableHeight: proxy.size.height) {
-                    panelHeader
-                } content: {
-                    songList
-                }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-            }
-        }
-        .navigationTitle(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            let points = trip.orderedPoints
-            startCoordinate = points.first?.coordinate
-            endCoordinate = points.count > 1 ? points.last?.coordinate : nil
-            segments = trip.routeSegments()
-            colors = Dictionary(uniqueKeysWithValues: listens.enumerated().map { ($1.id, SongPalette.color(at: $0)) })
-            replayer = TripReplayer(trip: trip, playback: coordinator.playback)
-        }
-        .onDisappear {
-            replayer?.stop()
-        }
     }
 
     private func color(for listen: ListeningEvent?) -> Color {

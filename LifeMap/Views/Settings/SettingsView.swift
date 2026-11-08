@@ -21,6 +21,7 @@ struct SettingsView: View {
                 shortcutsSection
                 dataSection
             }
+            .appTabBarInset()
             .navigationTitle("Settings")
             .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}

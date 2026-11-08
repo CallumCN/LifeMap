@@ -35,6 +35,7 @@ struct LiveView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             controlPanel
         }
+        .appTabBarInset()
         .animation(.snappy, value: coordinator.listening.current?.trackID)
         .animation(.snappy, value: coordinator.isTracking)
     }
