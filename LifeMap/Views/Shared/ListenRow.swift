@@ -19,8 +19,12 @@ struct ListenRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 HStack(spacing: 8) {
-                    ProgressView(value: listen.fractionListened)
-                        .tint(listen.source.tint)
+                    PlayedRangesBar(
+                        ranges: listen.observedRanges,
+                        durationSeconds: listen.durationSeconds,
+                        fallbackFraction: listen.fractionListened,
+                        tint: listen.source.tint
+                    )
                     Text(Formatters.percent(listen.fractionListened))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)

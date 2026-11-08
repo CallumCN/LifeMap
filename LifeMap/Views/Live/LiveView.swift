@@ -34,7 +34,11 @@ struct LiveView: View {
 
                 Section("Now playing") {
                     if let snapshot = coordinator.listening.current {
-                        NowPlayingCard(snapshot: snapshot, listenedSeconds: coordinator.listening.currentListenedSeconds)
+                        NowPlayingCard(
+                            snapshot: snapshot,
+                            listenedSeconds: coordinator.listening.currentListenedSeconds,
+                            ranges: coordinator.listening.currentRanges
+                        )
                     } else if coordinator.isTracking {
                         Text("Nothing playing on your connected services.")
                             .foregroundStyle(.secondary)
@@ -163,10 +167,11 @@ struct LiveView: View {
     }
 }
 
-/// Artwork, title, and a progress bar for the song being heard right now.
+/// Artwork, title, and a bar of the stretches heard so far for the song playing right now.
 struct NowPlayingCard: View {
     let snapshot: NowPlayingSnapshot
     let listenedSeconds: Double
+    var ranges: [PlayedRange] = []
 
     private var fraction: Double {
         ListeningEvent.fraction(listened: listenedSeconds, duration: snapshot.durationSeconds ?? 0)
@@ -196,8 +201,7 @@ struct NowPlayingCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 if let duration = snapshot.durationSeconds, duration > 0 {
-                    ProgressView(value: fraction)
-                        .tint(snapshot.source.tint)
+                    PlayedRangesBar(ranges: ranges, durationSeconds: duration, fallbackFraction: fraction, tint: snapshot.source.tint)
                     Text("\(Formatters.clock(listenedSeconds)) heard of \(Formatters.clock(duration)) · \(Formatters.percent(fraction))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)

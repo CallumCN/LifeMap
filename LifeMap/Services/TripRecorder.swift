@@ -94,7 +94,10 @@ final class TripRecorder {
             endedAt: listen.endedAt,
             durationSeconds: listen.snapshot.durationSeconds ?? listen.listenedSeconds,
             listenedSeconds: listen.listenedSeconds,
-            startLocation: listen.startLocation ?? lastLocation,
+            playedRanges: listen.playedRanges,
+            // The first poll often runs before the first GPS fix, so fall back to the
+            // track point nearest the song's start rather than wherever we are now.
+            startLocation: listen.startLocation ?? trip.nearestPoint(to: listen.startedAt)?.location ?? lastLocation,
             endLocation: listen.endLocation ?? lastLocation
         )
         event.trip = trip

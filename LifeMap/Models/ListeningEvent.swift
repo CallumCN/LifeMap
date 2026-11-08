@@ -2,6 +2,34 @@ import Foundation
 import SwiftData
 import CoreLocation
 
+/// A stretch of a track that was observed playing, in seconds from the start of the track.
+struct PlayedRange: Codable, Hashable, Sendable {
+    var start: Double
+    var end: Double
+
+    var length: Double { max(0, end - start) }
+}
+
+extension Array where Element == PlayedRange {
+    /// Ranges sorted by start, with overlapping or touching ones combined.
+    func merged() -> [PlayedRange] {
+        var result: [PlayedRange] = []
+        for range in sorted(by: { $0.start < $1.start }) {
+            if let last = result.last, range.start <= last.end {
+                result[result.count - 1].end = Swift.max(last.end, range.end)
+            } else {
+                result.append(range)
+            }
+        }
+        return result
+    }
+
+    /// Total seconds covered, counting overlaps once.
+    var coveredSeconds: Double {
+        merged().reduce(0) { $0 + $1.length }
+    }
+}
+
 /// One play of a song, with how much of it was heard and where it started and ended.
 @Model
 final class ListeningEvent {
@@ -20,6 +48,9 @@ final class ListeningEvent {
     var fractionListened: Double
     /// True when the play was imported from a history API that doesn't report how much was heard.
     var isEstimated: Bool
+    /// Stretches of the track observed playing. `nil` for plays recorded before this was
+    /// tracked and for imported history, which only knows that the song was played.
+    var playedRanges: [PlayedRange]?
     var startLatitude: Double?
     var startLongitude: Double?
     var endLatitude: Double?
@@ -37,6 +68,7 @@ final class ListeningEvent {
         endedAt: Date,
         durationSeconds: Double,
         listenedSeconds: Double,
+        playedRanges: [PlayedRange] = [],
         isEstimated: Bool = false,
         startLocation: CLLocation?,
         endLocation: CLLocation?
@@ -54,6 +86,7 @@ final class ListeningEvent {
         self.listenedSeconds = listenedSeconds
         self.fractionListened = ListeningEvent.fraction(listened: listenedSeconds, duration: durationSeconds)
         self.isEstimated = isEstimated
+        self.playedRanges = playedRanges.isEmpty ? nil : playedRanges.merged()
         self.startLatitude = startLocation?.coordinate.latitude
         self.startLongitude = startLocation?.coordinate.longitude
         self.endLatitude = endLocation?.coordinate.latitude
@@ -63,6 +96,11 @@ final class ListeningEvent {
     static func fraction(listened: Double, duration: Double) -> Double {
         guard duration > 0 else { return 0 }
         return min(1, max(0, listened / duration))
+    }
+
+    /// Observed ranges, or empty when none were recorded.
+    var observedRanges: [PlayedRange] {
+        playedRanges ?? []
     }
 
     var source: MusicSource {
