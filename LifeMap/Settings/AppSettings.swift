@@ -40,9 +40,16 @@ final class AppSettings {
         didSet { defaults.set(liveShareEndpoint, forKey: Key.liveShareEndpoint) }
     }
 
-    /// Spotify developer dashboard client ID. Required for the Spotify connection.
+    /// Optional override for the built-in Spotify client ID, for developers testing
+    /// against their own Spotify app. Leave empty to use `spotifyDefaultClientID`.
     var spotifyClientID: String {
         didSet { defaults.set(spotifyClientID, forKey: Key.spotifyClientID) }
+    }
+
+    /// The client ID actually used for Spotify sign-in: the override if set, else the built-in one.
+    var effectiveSpotifyClientID: String {
+        let override = spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return override.isEmpty ? Self.spotifyDefaultClientID : override
     }
 
     /// When true, requests navigation-grade location fixes; otherwise fitness-grade (less battery).
@@ -74,4 +81,8 @@ final class AppSettings {
 
     /// Redirect URI registered with Spotify. Must match the URL scheme in Info.plist.
     static let spotifyRedirectURI = "lifemap://spotify-callback"
+
+    /// Client ID of the LifeMap app registered at developer.spotify.com. The app uses the
+    /// PKCE flow, so this is public and no client secret is ever stored on the device.
+    static let spotifyDefaultClientID = "28af32200f0340e1b8eb6ea3e0b3a1de"
 }

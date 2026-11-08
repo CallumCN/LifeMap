@@ -35,7 +35,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     // MARK: - Connection
 
     func connect() async throws {
-        let clientID = settings.spotifyClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientID = settings.effectiveSpotifyClientID
         guard !clientID.isEmpty else {
             throw SpotifyError.missingClientID
         }
@@ -143,7 +143,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
         let body = [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
-            "client_id": settings.spotifyClientID,
+            "client_id": settings.effectiveSpotifyClientID,
         ]
         var refreshed = try await requestTokens(form: body)
         if refreshed.refreshToken == nil {

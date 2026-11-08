@@ -94,19 +94,10 @@ struct SettingsView: View {
         } header: {
             Text("Music sources")
         } footer: {
-            Text("Apple Music reads the system player, so it also covers songs from your library. Spotify needs a free developer Client ID. YouTube Music has no public API for playback or history.")
+            Text("Apple Music reads the system player, so it also covers songs from your library. Spotify opens a sign-in page in an in-app browser. YouTube Music has no public API for playback or history.")
         }
 
         Section {
-            TextField("Spotify Client ID", text: settings.spotifyClientID)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.callout.monospaced())
-            LabeledContent("Redirect URI") {
-                Text(AppSettings.spotifyRedirectURI)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-            }
             Button {
                 Task { await importSpotifyHistory() }
             } label: {
@@ -125,7 +116,23 @@ struct SettingsView: View {
         } header: {
             Text("Spotify")
         } footer: {
-            Text("Create an app at developer.spotify.com, add the redirect URI above, and paste its Client ID here. Importing fetches up to 50 recently played tracks and attaches them to trips that were being recorded at the time. Spotify only reports tracks played for 30 seconds or more and doesn't say how much was heard, so imported plays are marked as estimated.")
+            Text("Importing fetches up to 50 recently played tracks and attaches them to trips that were being recorded at the time. Spotify only reports tracks played for 30 seconds or more and doesn't say how much was heard, so imported plays are marked as estimated.")
+        }
+
+        Section {
+            TextField("Custom Spotify Client ID", text: settings.spotifyClientID)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.callout.monospaced())
+            LabeledContent("Redirect URI") {
+                Text(AppSettings.spotifyRedirectURI)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+            }
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("Leave blank to use LifeMap's built-in Spotify app. Only set this if you've registered your own app at developer.spotify.com with the redirect URI above. Disconnect and reconnect Spotify after changing it.")
         }
     }
 
