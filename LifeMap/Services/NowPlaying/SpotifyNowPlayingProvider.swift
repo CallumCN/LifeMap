@@ -4,6 +4,8 @@ import CryptoKit
 import AuthenticationServices
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 /// Talks to the Spotify Web API using the Authorization Code + PKCE flow, which needs
@@ -18,7 +20,8 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
 
     private let settings: AppSettings
     private var tokens: SpotifyTokens?
-    private let presentationContext = WebAuthPresentationContext()
+    /// Kept alive for the duration of a sign-in because the session only holds it weakly.
+    private var presentationContext: WebAuthPresentationContext?
 
     private static let tokenKey = "spotify.tokens"
     private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played"
@@ -82,7 +85,14 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     }
 
     private func authenticate(url: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
+        guard let anchor = Self.presentationAnchor() else {
+            throw SpotifyError.authorizationFailed("no window is available to show the sign-in page")
+        }
+        let context = WebAuthPresentationContext(anchor: anchor)
+        presentationContext = context
+        defer { presentationContext = nil }
+
+        return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callback: .customScheme("lifemap")) { callbackURL, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -92,10 +102,23 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
                     continuation.resume(throwing: SpotifyError.authorizationFailed("no callback"))
                 }
             }
-            session.presentationContextProvider = presentationContext
+            session.presentationContextProvider = context
             session.prefersEphemeralWebBrowserSession = false
             session.start()
         }
+    }
+
+    /// The window the OAuth sheet should attach to, or `nil` when the app has no visible scene.
+    private static func presentationAnchor() -> ASPresentationAnchor? {
+        #if canImport(UIKit)
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            return nil
+        }
+        return scene.keyWindow ?? scene.windows.first ?? UIWindow(windowScene: scene)
+        #else
+        return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first
+        #endif
     }
 
     // MARK: - Tokens
@@ -351,17 +374,16 @@ private extension CharacterSet {
     }()
 }
 
-/// Supplies the window that hosts the OAuth web view.
-private final class WebAuthPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
-    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            #if canImport(UIKit)
-            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            if let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
-                return scene.keyWindow ?? UIWindow(windowScene: scene)
-            }
-            #endif
-            return ASPresentationAnchor()
-        }
+/// Hands the OAuth web view a window that was resolved before sign-in began.
+private nonisolated final class WebAuthPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let anchor: ASPresentationAnchor
+
+    init(anchor: ASPresentationAnchor) {
+        self.anchor = anchor
+        super.init()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        anchor
     }
 }
