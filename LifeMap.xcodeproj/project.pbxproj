@@ -10,9 +10,22 @@
 		000000000000000000000120 /* LifeMap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LifeMap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		1A9089F1306F1B1A00D3F2C5 /* Exceptions for "LifeMap" folder in "LifeMap" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 000000000000000100000000 /* LifeMap */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* LifeMap */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				1A9089F1306F1B1A00D3F2C5 /* Exceptions for "LifeMap" folder in "LifeMap" target */,
+			);
 			path = LifeMap;
 			sourceTree = "<group>";
 		};
@@ -256,6 +269,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LifeMap/Info.plist;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "LifeMap reads what the Music app is playing so it can log songs alongside your trips.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Always access lets LifeMap keep recording a trip after you switch to your music app or lock the phone, and start trips automatically when you begin moving.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LifeMap records your route so each trip can be drawn on a map alongside the music you were listening to.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "LifeMap uses motion activity to notice when you start driving, cycling, running, or walking so it can begin tracking a trip automatically.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -293,6 +311,11 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LifeMap/Info.plist;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "LifeMap reads what the Music app is playing so it can log songs alongside your trips.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Always access lets LifeMap keep recording a trip after you switch to your music app or lock the phone, and start trips automatically when you begin moving.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "LifeMap records your route so each trip can be drawn on a map alongside the music you were listening to.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "LifeMap uses motion activity to notice when you start driving, cycling, running, or walking so it can begin tracking a trip automatically.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
