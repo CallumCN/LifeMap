@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 /// A run of consecutive track points during which one song, or nothing, was playing.
 struct RouteSegment: Identifiable {
@@ -44,6 +45,31 @@ extension Trip {
 }
 
 enum RouteMath {
+    /// A map region that shows every coordinate with some breathing room around them.
+    static func region(fitting coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion? {
+        guard let first = coordinates.first else { return nil }
+        var minLatitude = first.latitude
+        var maxLatitude = first.latitude
+        var minLongitude = first.longitude
+        var maxLongitude = first.longitude
+        for coordinate in coordinates.dropFirst() {
+            minLatitude = min(minLatitude, coordinate.latitude)
+            maxLatitude = max(maxLatitude, coordinate.latitude)
+            minLongitude = min(minLongitude, coordinate.longitude)
+            maxLongitude = max(maxLongitude, coordinate.longitude)
+        }
+        let center = CLLocationCoordinate2D(
+            latitude: (minLatitude + maxLatitude) / 2,
+            longitude: (minLongitude + maxLongitude) / 2
+        )
+        // Pad by 30% and never zoom in tighter than a few hundred metres.
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLatitude - minLatitude) * 1.3, 0.004),
+            longitudeDelta: max((maxLongitude - minLongitude) * 1.3, 0.004)
+        )
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
     /// Interpolates a position along chronologically ordered track points.
     static func coordinate(at date: Date, in points: [TrackPoint]) -> CLLocationCoordinate2D? {
         guard let first = points.first, let last = points.last else { return nil }

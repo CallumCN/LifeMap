@@ -17,6 +17,7 @@ struct TripDetailView: View {
     @State private var endCoordinate: CLLocationCoordinate2D?
     @State private var detent: PanelDetent = .collapsed
     @State private var position: MapCameraPosition = .automatic
+    @State private var routeRegion: MKCoordinateRegion?
 
     private var listens: [ListeningEvent] {
         trip.orderedListens
@@ -26,16 +27,18 @@ struct TripDetailView: View {
         GeometryReader { proxy in
             ZStack(alignment: .bottom) {
                 tripMap
-                    // Keep the map's controls and attribution above the collapsed panel. This is
-                    // a fixed inset so the map doesn't re-fit while the panel is dragged.
-                    .safeAreaPadding(.bottom, BottomPanelMetrics.collapsedHeight)
+                    // Inset the map by the panel's resting height. This only changes when the
+                    // panel settles, so the map holds still while it's being dragged.
+                    .safeAreaPadding(.bottom, panelInset(availableHeight: proxy.size.height))
 
                 BottomPanel(detent: $detent, availableHeight: proxy.size.height, fillsToBottomEdge: true) {
                     panelHeader
                 } content: {
                     songList
                 } accessory: {
-                    replayButton
+                    if detent != .full {
+                        replayButton
+                    }
                 }
             }
         }
@@ -44,10 +47,18 @@ struct TripDetailView: View {
         .onAppear {
             navigation.isTabBarHidden = true
         }
+        .onChange(of: detent) { _, newDetent in
+            // Once the panel settles at the bottom or middle, show the whole route again.
+            guard newDetent != .full, let routeRegion else { return }
+            withAnimation(.snappy) {
+                position = .region(routeRegion)
+            }
+        }
         .task {
             let points = trip.orderedPoints
             startCoordinate = points.first?.coordinate
             endCoordinate = points.count > 1 ? points.last?.coordinate : nil
+            routeRegion = RouteMath.region(fitting: points.map(\.coordinate))
             segments = trip.routeSegments()
             colors = Dictionary(uniqueKeysWithValues: listens.enumerated().map { ($1.id, SongPalette.color(at: $0)) })
             replayer = TripReplayer(trip: trip, playback: coordinator.playback)
@@ -86,6 +97,13 @@ struct TripDetailView: View {
 
     private func color(for listen: ListeningEvent?) -> Color {
         listen.flatMap { colors[$0.id] } ?? SongPalette.silence
+    }
+
+    /// How much of the map's bottom the panel covers at its current resting position.
+    private func panelInset(availableHeight: CGFloat) -> CGFloat {
+        detent == .full
+            ? 0
+            : BottomPanelMetrics.height(for: detent, collapsedHeight: BottomPanelMetrics.defaultCollapsedHeight, availableHeight: availableHeight)
     }
 
     // MARK: - Replay

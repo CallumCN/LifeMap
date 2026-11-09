@@ -88,13 +88,16 @@ struct TripListView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
 
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                // Separate items so each button gets its own background.
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingFilters = true
                     } label: {
                         Label("Filter", systemImage: filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                     }
-                    if !trips.isEmpty {
+                }
+                if !trips.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button(editMode.isEditing ? "Done" : "Manage") {
                             withAnimation {
                                 editMode = editMode.isEditing ? .inactive : .active

@@ -2,8 +2,17 @@ import SwiftUI
 
 /// Sizes other views need to lay out around a `BottomPanel`.
 enum BottomPanelMetrics {
-    /// Height of a collapsed panel: the grabber plus the header.
-    static let collapsedHeight: CGFloat = 84
+    /// Height of a collapsed panel with a single-line header: the grabber plus the header.
+    static let defaultCollapsedHeight: CGFloat = 84
+
+    /// The panel's height at a resting position. `full` covers the whole available area.
+    static func height(for detent: PanelDetent, collapsedHeight: CGFloat, availableHeight: CGFloat) -> CGFloat {
+        switch detent {
+        case .collapsed: collapsedHeight
+        case .half: max(collapsedHeight, availableHeight * 0.5)
+        case .full: max(collapsedHeight, availableHeight)
+        }
+    }
 }
 
 /// Resting positions for `BottomPanel`.
@@ -14,8 +23,8 @@ enum PanelDetent: CaseIterable {
 }
 
 /// A panel anchored to the bottom of a map that can be dragged between showing just its
-/// header, half the available height, and nearly all of it. It spans the full width with
-/// only its top corners rounded, so it reads as part of the screen rather than a card.
+/// header, half the available height, and all of it. It spans the full width with only
+/// its top corners rounded, so it reads as part of the screen rather than a card.
 ///
 /// Place it in a `ZStack` over the map rather than as a safe-area inset, so the map's
 /// frame doesn't change while the panel is being dragged.
@@ -23,9 +32,11 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     @Binding var detent: PanelDetent
     /// Height of the area the panel lives in, usually from a `GeometryReader` around the map.
     let availableHeight: CGFloat
+    /// Height when collapsed; raise it for headers taller than one line.
+    var collapsedHeight: CGFloat
     /// When true, the background runs under the home indicator to the screen's bottom edge.
     /// Leave false when another bar, such as the tab bar, sits beneath the panel.
-    var fillsToBottomEdge = false
+    var fillsToBottomEdge: Bool
     let header: () -> Header
     let content: () -> Content
     /// A control that floats just above the panel's top-left corner and moves with it.
@@ -36,6 +47,7 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     init(
         detent: Binding<PanelDetent>,
         availableHeight: CGFloat,
+        collapsedHeight: CGFloat = BottomPanelMetrics.defaultCollapsedHeight,
         fillsToBottomEdge: Bool = false,
         @ViewBuilder header: @escaping () -> Header,
         @ViewBuilder content: @escaping () -> Content,
@@ -43,6 +55,7 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     ) {
         self._detent = detent
         self.availableHeight = availableHeight
+        self.collapsedHeight = collapsedHeight
         self.fillsToBottomEdge = fillsToBottomEdge
         self.header = header
         self.content = content
@@ -52,31 +65,38 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     init(
         detent: Binding<PanelDetent>,
         availableHeight: CGFloat,
+        collapsedHeight: CGFloat = BottomPanelMetrics.defaultCollapsedHeight,
         fillsToBottomEdge: Bool = false,
         @ViewBuilder header: @escaping () -> Header,
         @ViewBuilder content: @escaping () -> Content
     ) where Accessory == EmptyView {
-        self.init(detent: detent, availableHeight: availableHeight, fillsToBottomEdge: fillsToBottomEdge, header: header, content: content) {
+        self.init(
+            detent: detent,
+            availableHeight: availableHeight,
+            collapsedHeight: collapsedHeight,
+            fillsToBottomEdge: fillsToBottomEdge,
+            header: header,
+            content: content
+        ) {
             EmptyView()
         }
     }
 
-    private static var collapsedHeight: CGFloat { BottomPanelMetrics.collapsedHeight }
-
     private func height(for detent: PanelDetent) -> CGFloat {
-        switch detent {
-        case .collapsed: Self.collapsedHeight
-        case .half: max(Self.collapsedHeight, availableHeight * 0.5)
-        case .full: max(Self.collapsedHeight, availableHeight - 24)
-        }
+        BottomPanelMetrics.height(for: detent, collapsedHeight: collapsedHeight, availableHeight: availableHeight)
     }
 
     private var currentHeight: CGFloat {
-        min(max(height(for: detent) - dragOffset, Self.collapsedHeight), height(for: .full))
+        min(max(height(for: detent) - dragOffset, collapsedHeight), height(for: .full))
     }
 
     private var showsContent: Bool {
         detent != .collapsed || dragOffset < 0
+    }
+
+    /// Square the top corners once the panel fills the area, so it reads as a full screen.
+    private var cornerRadius: CGFloat {
+        currentHeight >= height(for: .full) - 1 ? 0 : 20
     }
 
     var body: some View {
@@ -103,10 +123,10 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
         .frame(height: currentHeight, alignment: .top)
         .clipped()
         .background {
-            UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20)
+            UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
                 .fill(.regularMaterial)
                 .overlay(alignment: .top) {
-                    UnevenRoundedRectangle(topLeadingRadius: 20, topTrailingRadius: 20)
+                    UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
                         .stroke(.separator, lineWidth: 0.5)
                 }
                 .ignoresSafeArea(edges: fillsToBottomEdge ? .bottom : [])

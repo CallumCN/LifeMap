@@ -2,27 +2,31 @@ import SwiftUI
 import SwiftData
 import MapKit
 
-/// Every filtered trip on one map, with a panel ranking songs or artists by time heard.
-/// Picking one highlights the stretches of route where it was playing.
+/// Every trip on one map, with a panel ranking songs or artists by time heard. Picking one
+/// highlights the stretches of route where it was playing.
 struct TripsMapView: View {
-    @Binding var filter: TripFilter
-
     @Query(sort: \Trip.startDate, order: .reverse) private var trips: [Trip]
     @Environment(TrackingCoordinator.self) private var coordinator
     @State private var position: MapCameraPosition = .automatic
     @State private var path: [Trip] = []
     @State private var selectedTripID: UUID?
-    @State private var showingFilters = false
     @State private var detent: PanelDetent = .collapsed
     @State private var ranking: RankingKind = .songs
+    @State private var query = ""
     @State private var selectedEntryID: String?
+    @FocusState private var isSearchFocused: Bool
 
-    private var filteredTrips: [Trip] {
-        filter.apply(to: trips)
-    }
+    /// Tall enough for the Songs/Artists switch and the search field.
+    private static let collapsedPanelHeight: CGFloat = 136
 
     private var entries: [RankedEntry] {
-        RankedEntry.rank(filteredTrips.flatMap(\.listens), by: ranking)
+        let ranked = RankedEntry.rank(trips.flatMap(\.listens), by: ranking)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return ranked }
+        return ranked.filter { entry in
+            entry.title.localizedStandardContains(trimmed)
+                || (ranking == .songs && entry.subtitle.localizedStandardContains(trimmed))
+        }
     }
 
     private var selectedEntry: RankedEntry? {
@@ -34,7 +38,7 @@ struct TripsMapView: View {
             GeometryReader { proxy in
                 ZStack(alignment: .bottom) {
                     Map(position: $position, selection: $selectedTripID) {
-                        ForEach(filteredTrips) { trip in
+                        ForEach(trips) { trip in
                             tripContent(for: trip)
                         }
                         UserAnnotation()
@@ -45,20 +49,19 @@ struct TripsMapView: View {
                         MapCompass()
                         MapScaleView()
                     }
-                    // Fixed inset so the map doesn't re-fit while the panel is dragged.
-                    .safeAreaPadding(.bottom, BottomPanelMetrics.collapsedHeight)
+                    // Inset by the panel's resting height, so the map holds still during a drag.
+                    .safeAreaPadding(.bottom, panelInset(availableHeight: proxy.size.height))
 
-                    BottomPanel(detent: $detent, availableHeight: proxy.size.height) {
-                        Picker("Rank by", selection: $ranking) {
-                            ForEach(RankingKind.allCases) { kind in
-                                Text(kind.title).tag(kind)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+                    BottomPanel(
+                        detent: $detent,
+                        availableHeight: proxy.size.height,
+                        collapsedHeight: Self.collapsedPanelHeight
+                    ) {
+                        panelHeader
                     } content: {
                         rankingList
                     } accessory: {
-                        if let entry = selectedEntry {
+                        if detent != .full, let entry = selectedEntry {
                             playButton(for: entry)
                         }
                     }
@@ -73,28 +76,28 @@ struct TripsMapView: View {
             }
             .navigationTitle("Map")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $filter.songQuery, prompt: "Song, artist, or album")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingFilters = true
-                    } label: {
-                        Label("Filter", systemImage: filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingFilters) {
-                TripFilterSheet(filter: $filter)
-                    .presentationDetents([.medium, .large])
-            }
             .navigationDestination(for: Trip.self) { trip in
-                TripDetailView(trip: trip, filter: filter)
-            }
-            .onChange(of: filter) { _, _ in
-                position = .automatic
+                TripDetailView(trip: trip)
             }
             .onChange(of: ranking) { _, _ in
                 selectedEntryID = nil
+            }
+            .onChange(of: isSearchFocused) { _, focused in
+                // Typing into a collapsed panel would hide the results, so open it.
+                if focused, detent == .collapsed {
+                    withAnimation(.snappy) { detent = .half }
+                }
+            }
+            .onChange(of: detent) { _, newDetent in
+                if newDetent == .collapsed {
+                    isSearchFocused = false
+                }
+                // Once the panel settles at the bottom or middle, show every trip again.
+                guard newDetent != .full,
+                      let region = RouteMath.region(fitting: trips.flatMap(\.coordinates)) else { return }
+                withAnimation(.snappy) {
+                    position = .region(region)
+                }
             }
             .onChange(of: selectedTripID) { _, id in
                 // Tapping a trip's start marker opens that trip.
@@ -103,6 +106,13 @@ struct TripsMapView: View {
                 path.append(trip)
             }
         }
+    }
+
+    /// How much of the map's bottom the panel covers at its current resting position.
+    private func panelInset(availableHeight: CGFloat) -> CGFloat {
+        detent == .full
+            ? 0
+            : BottomPanelMetrics.height(for: detent, collapsedHeight: Self.collapsedPanelHeight, availableHeight: availableHeight)
     }
 
     // MARK: - Map content
@@ -168,6 +178,40 @@ struct TripsMapView: View {
 
     // MARK: - Ranking panel
 
+    private var panelHeader: some View {
+        VStack(spacing: 10) {
+            Picker("Rank by", selection: $ranking) {
+                ForEach(RankingKind.allCases) { kind in
+                    Text(kind.title).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(ranking == .songs ? "Search songs" : "Search artists", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .focused($isSearchFocused)
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
     @ViewBuilder
     private var rankingList: some View {
         VStack(spacing: 0) {
@@ -179,18 +223,24 @@ struct TripsMapView: View {
                     .padding(.bottom, 8)
             }
             if entries.isEmpty {
-                ContentUnavailableView("No songs", systemImage: "music.note", description: Text("Songs heard on trips will be ranked here by time listened."))
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    ContentUnavailableView("No songs", systemImage: "music.note", description: Text("Songs heard on trips will be ranked here by time listened."))
+                } else {
+                    ContentUnavailableView.search(text: query)
+                }
             } else {
                 List(entries) { entry in
                     RankedEntryRow(entry: entry, isSelected: entry.id == selectedEntryID)
                         .contentShape(Rectangle())
                         .onTapGesture {
+                            isSearchFocused = false
                             selectedEntryID = selectedEntryID == entry.id ? nil : entry.id
                         }
                         .listRowBackground(entry.id == selectedEntryID ? Color.accentColor.opacity(0.12) : Color.clear)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.immediately)
             }
         }
     }

@@ -51,7 +51,7 @@ struct ContentView: View {
                     .toolbar(.hidden, for: .tabBar)
             }
             Tab(AppTab.map.title, systemImage: AppTab.map.symbolName, value: .map) {
-                TripsMapView(filter: $filter)
+                TripsMapView()
                     .toolbar(.hidden, for: .tabBar)
             }
             Tab(AppTab.live.title, systemImage: AppTab.live.symbolName, value: .live) {

@@ -10,12 +10,6 @@ struct TripRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: trip.activity?.symbolName ?? "location")
-                .font(.title3)
-                .foregroundStyle(TripPalette.color(for: trip))
-                .frame(width: 32)
-                .accessibilityLabel(trip.activity?.displayName ?? "Trip")
-
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
