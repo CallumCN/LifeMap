@@ -80,6 +80,8 @@ struct TripsMapView: View {
                         }
                     }
                 }
+                // The panel extends past the bottom of this area; keep it off the tab bar.
+                .clipped()
             }
             .appTabBarInset()
             .overlay {
@@ -252,11 +254,16 @@ struct TripsMapView: View {
                     .padding(.bottom, 8)
             }
             if entries.isEmpty {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    ContentUnavailableView("No songs", systemImage: "music.note", description: Text("Songs heard on trips will be ranked here by time listened."))
-                } else {
-                    ContentUnavailableView.search(text: query)
+                // Bounded and top-aligned; see the note in TripDetailView.
+                Group {
+                    if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                        ContentUnavailableView("No songs", systemImage: "music.note", description: Text("Songs heard on trips will be ranked here by time listened."))
+                    } else {
+                        ContentUnavailableView.search(text: query)
+                    }
                 }
+                .frame(height: BottomPanelMetrics.emptyStateHeight)
+                Spacer(minLength: 0)
             } else {
                 List(entries) { entry in
                     RankedEntryRow(entry: entry, isSelected: entry.id == selectedEntryID)

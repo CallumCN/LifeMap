@@ -5,6 +5,10 @@ enum BottomPanelMetrics {
     /// Height of a collapsed panel with a single-line header: the grabber plus the header.
     static let defaultCollapsedHeight: CGFloat = 84
 
+    /// Height to give an empty-state view inside a panel. The panel is laid out at full
+    /// height, so a view that centres itself vertically needs bounding first.
+    static let emptyStateHeight: CGFloat = 260
+
     /// The panel's height at a resting position. `full` covers the whole available area.
     static func height(for detent: PanelDetent, collapsedHeight: CGFloat, availableHeight: CGFloat) -> CGFloat {
         switch detent {
@@ -26,8 +30,14 @@ enum PanelDetent: CaseIterable {
 /// header, half the available height, and all of it. It spans the full width with only
 /// its top corners rounded, so it reads as part of the screen rather than a card.
 ///
+/// The panel is always laid out at full height and slid down to reveal only part of
+/// itself. Dragging changes nothing but that offset, so no view inside it is ever
+/// re-measured mid-gesture, which is what makes the slide smooth. The one resize happens
+/// when a drag ends, instantly and while the panel is still off its resting place, so the
+/// animation that follows is a pure transform.
+///
 /// Place it in a `ZStack` over the map rather than as a safe-area inset, so the map's
-/// frame doesn't change while the panel is being dragged.
+/// frame doesn't change either.
 struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
     @Binding var detent: PanelDetent
     /// Height of the area the panel lives in, usually from a `GeometryReader` around the map.
@@ -86,17 +96,18 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
         BottomPanelMetrics.height(for: detent, collapsedHeight: collapsedHeight, availableHeight: availableHeight)
     }
 
-    private var currentHeight: CGFloat {
-        min(max(height(for: detent) - dragOffset, collapsedHeight), height(for: .full))
+    private var fullHeight: CGFloat { height(for: .full) }
+    private var settledHeight: CGFloat { height(for: detent) }
+
+    /// How much of the panel is on screen right now, including any in-progress drag.
+    private var visibleHeight: CGFloat {
+        min(max(settledHeight - dragOffset, collapsedHeight), fullHeight)
     }
 
-    private var showsContent: Bool {
-        detent != .collapsed || dragOffset < 0
-    }
+    private var cornerRadius: CGFloat { detent == .full ? 0 : 20 }
 
-    /// Square the top corners once the panel fills the area, so it reads as a full screen.
-    private var cornerRadius: CGFloat {
-        currentHeight >= height(for: .full) - 1 ? 0 : 20
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
     }
 
     var body: some View {
@@ -114,33 +125,29 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
             .contentShape(Rectangle())
             .gesture(drag)
 
-            if showsContent {
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // The panel is taller than the part on screen, so pad the scrollable area
+                // by the hidden amount to keep every row reachable.
+                .contentMargins(.bottom, fullHeight - settledHeight, for: .scrollContent)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: currentHeight, alignment: .top)
-        .clipped()
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
+        .frame(height: fullHeight, alignment: .top)
+        .clipShape(shape)
+        .background(alignment: .top) {
+            shape
                 .fill(.regularMaterial)
-                .overlay(alignment: .top) {
-                    UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
-                        .stroke(.separator, lineWidth: 0.5)
-                }
+                .overlay(alignment: .top) { Divider() }
                 .ignoresSafeArea(edges: fillsToBottomEdge ? .bottom : [])
         }
         .overlay(alignment: .topLeading) {
-            // Sits above the panel, clear of the map attribution that hugs the panel's top edge.
+            // Sits above the panel, clear of the map attribution that hugs its top edge.
             accessory()
                 .padding(.leading, 16)
                 .alignmentGuide(.top) { dimensions in dimensions[.bottom] + 40 }
         }
+        .offset(y: fullHeight - visibleHeight)
         .accessibilityAction(named: detent == .full ? "Collapse" : "Expand") {
-            withAnimation(.snappy) {
-                detent = detent == .full ? .collapsed : .full
-            }
+            setDetent(detent == .full ? .collapsed : .full, from: visibleHeight)
         }
     }
 
@@ -150,14 +157,22 @@ struct BottomPanel<Header: View, Content: View, Accessory: View>: View {
                 dragOffset = value.translation.height
             }
             .onEnded { value in
-                let projected = height(for: detent) - value.predictedEndTranslation.height
+                let released = visibleHeight
+                let projected = settledHeight - value.predictedEndTranslation.height
                 let nearest = PanelDetent.allCases.min {
                     abs(height(for: $0) - projected) < abs(height(for: $1) - projected)
                 } ?? .collapsed
-                withAnimation(.snappy) {
-                    detent = nearest
-                    dragOffset = 0
-                }
+                setDetent(nearest, from: released)
             }
+    }
+
+    /// Resizes to the new resting height immediately while holding the panel visually
+    /// still, then animates it into place without any further layout.
+    private func setDetent(_ newDetent: PanelDetent, from visible: CGFloat) {
+        detent = newDetent
+        dragOffset = height(for: newDetent) - visible
+        withAnimation(.snappy) {
+            dragOffset = 0
+        }
     }
 }

@@ -24,7 +24,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     private var presentationContext: WebAuthPresentationContext?
 
     private static let tokenKey = "spotify.tokens"
-    private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played user-modify-playback-state"
+    private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played user-modify-playback-state app-remote-control streaming"
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -255,6 +255,12 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
                 endedAt: playedAt
             )
         }
+    }
+
+    /// A valid access token, refreshing it first if it has expired. Used by the App Remote
+    /// connection, which authenticates with the same token as the Web API.
+    func currentAccessToken() async throws -> String {
+        try await refreshIfNeeded()
     }
 
     // MARK: - Playback control

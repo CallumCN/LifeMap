@@ -153,7 +153,11 @@ struct TripDetailView: View {
                     .padding(.bottom, 8)
             }
             if listens.isEmpty {
+                // Bounded and top-aligned: the panel is laid out at full height, so an
+                // unbounded empty state would centre itself below the screen.
                 ContentUnavailableView("No songs", systemImage: "music.note", description: Text("Nothing was playing during this trip."))
+                    .frame(height: BottomPanelMetrics.emptyStateHeight)
+                Spacer(minLength: 0)
             } else {
                 List(listens) { listen in
                     Button {

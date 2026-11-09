@@ -25,11 +25,23 @@ struct MyApp: App {
         self.coordinator = coordinator
     }
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(settings)
                 .environment(coordinator)
+                .onOpenURL { url in
+                    // Spotify returns here after being launched to accept a connection.
+                    coordinator.playback.appRemote.handleCallback(url: url)
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    // iOS drops the App Remote connection in the background.
+                    if phase == .active {
+                        coordinator.playback.appRemote.reconnectIfNeeded()
+                    }
+                }
         }
         .modelContainer(container)
     }

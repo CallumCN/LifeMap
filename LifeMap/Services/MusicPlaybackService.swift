@@ -5,10 +5,11 @@ import MusicKit
 /// Plays a recorded song again on the service it came from, starting at a chosen offset.
 ///
 /// Apple Music songs play inside LifeMap through MusicKit's application player, which
-/// needs an Apple Music subscription for catalog songs. Spotify songs are started on the
-/// user's active Spotify device through the Web API, which needs Spotify Premium and the
-/// Spotify app to be open.
+/// needs an Apple Music subscription for catalog songs. Spotify songs go through the
+/// iOS SDK's App Remote when it is available, since that can launch the Spotify app, and
+/// fall back to the Web API otherwise. Either way Spotify Premium is required.
 @Observable
+@MainActor
 final class MusicPlaybackService {
     private(set) var isPlaying = false
     /// The listening event whose song is playing, if any.
@@ -16,7 +17,10 @@ final class MusicPlaybackService {
     private(set) var lastError: String?
 
     private let spotify: SpotifyNowPlayingProvider
+    let appRemote = SpotifyAppRemoteController()
     private var currentSource: MusicSource?
+    /// True when the current Spotify playback is being driven through App Remote.
+    private var usingAppRemote = false
 
     init(spotify: SpotifyNowPlayingProvider) {
         self.spotify = spotify
@@ -34,7 +38,7 @@ final class MusicPlaybackService {
             case .appleMusic:
                 try await playAppleMusic(trackID: listen.trackID, offset: offsetSeconds)
             case .spotify:
-                try await spotify.startPlayback(trackID: listen.trackID, positionSeconds: offsetSeconds)
+                try await playSpotify(trackID: listen.trackID, offset: offsetSeconds)
             case .youtubeMusic:
                 throw PlaybackError.unsupported("YouTube Music can't be controlled by other apps.")
             }
@@ -56,7 +60,11 @@ final class MusicPlaybackService {
             ApplicationMusicPlayer.shared.playbackTime = max(0, offsetSeconds)
         case .spotify:
             do {
-                try await spotify.seekPlayback(positionSeconds: offsetSeconds)
+                if usingAppRemote {
+                    try await appRemote.seek(to: offsetSeconds)
+                } else {
+                    try await spotify.seekPlayback(positionSeconds: offsetSeconds)
+                }
             } catch {
                 lastError = error.localizedDescription
             }
@@ -79,10 +87,36 @@ final class MusicPlaybackService {
         case .appleMusic:
             ApplicationMusicPlayer.shared.pause()
         case .spotify:
-            try? await spotify.pausePlayback()
+            if usingAppRemote {
+                try? await appRemote.pause()
+            } else {
+                try? await spotify.pausePlayback()
+            }
         case .youtubeMusic:
             break
         }
+    }
+
+    /// Plays through App Remote where possible, since it can launch the Spotify app.
+    /// Falls back to the Web API, which only works if Spotify is already awake.
+    private func playSpotify(trackID: String, offset: Double) async throws {
+        if SpotifyAppRemoteController.isSDKAvailable, !appRemote.isSpotifyMissing {
+            do {
+                if !appRemote.isConnected {
+                    let token = try await spotify.currentAccessToken()
+                    try await appRemote.connect(accessToken: token)
+                }
+                try await appRemote.play(trackID: trackID, positionSeconds: offset)
+                usingAppRemote = true
+                return
+            } catch {
+                // Fall through; the Web API may still reach a desktop or speaker.
+                lastError = error.localizedDescription
+            }
+        }
+        try await spotify.startPlayback(trackID: trackID, positionSeconds: offset)
+        usingAppRemote = false
+        lastError = nil
     }
 
     private func playAppleMusic(trackID: String, offset: Double) async throws {
