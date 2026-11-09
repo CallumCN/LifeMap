@@ -259,11 +259,69 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
 
     // MARK: - Playback control
 
-    /// Starts a track on the user's active Spotify device, `positionSeconds` in.
-    func startPlayback(trackID: String, positionSeconds: Double) async throws {
+    /// A device registered with Spotify Connect, such as the phone's Spotify app.
+    struct PlaybackDevice: Decodable, Sendable {
+        var id: String?
+        var name: String
+        var is_active: Bool
+        var is_restricted: Bool
+    }
+
+    private struct DevicesResponse: Decodable {
+        var devices: [PlaybackDevice]
+    }
+
+    /// Devices Spotify currently knows about. Only devices where the Spotify app has run
+    /// recently appear here; there is no way to conjure one.
+    func availableDevices() async throws -> [PlaybackDevice] {
         guard connectionState.isConnected else { throw SpotifyError.notConnected }
         let token = try await refreshIfNeeded()
-        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/play")!)
+        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player/devices")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw SpotifyError.httpError(String(data: data, encoding: .utf8) ?? "")
+        }
+        return try JSONDecoder().decode(DevicesResponse.self, from: data).devices
+    }
+
+    /// Wakes a device and makes it the target for playback commands.
+    func transferPlayback(to deviceID: String, startPlaying: Bool = false) async throws {
+        let token = try await refreshIfNeeded()
+        var request = URLRequest(url: URL(string: "https://api.spotify.com/v1/me/player")!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["device_ids": [deviceID], "play": startPlaying])
+        try await sendPlayerCommand(request)
+    }
+
+    /// Starts a track `positionSeconds` in, targeting a device explicitly.
+    ///
+    /// Commands sent without a device id go to whichever device is "active", and a device
+    /// that was merely paused stops being active within seconds. Spotify then accepts the
+    /// request but never runs it, which looks like playback silently failing.
+    func startPlayback(trackID: String, positionSeconds: Double) async throws {
+        guard connectionState.isConnected else { throw SpotifyError.notConnected }
+        let devices = try await availableDevices().filter { !$0.is_restricted && $0.id != nil }
+        guard let device = devices.first(where: \.is_active) ?? devices.first, let deviceID = device.id else {
+            throw SpotifyError.playbackUnavailable(
+                "No Spotify device is available. Open the Spotify app once so it can receive playback, then try again."
+            )
+        }
+        if !device.is_active {
+            // Wake the device first, otherwise the play command is accepted and dropped.
+            try await transferPlayback(to: deviceID)
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        try await sendPlay(trackID: trackID, positionSeconds: positionSeconds, deviceID: deviceID)
+    }
+
+    private func sendPlay(trackID: String, positionSeconds: Double, deviceID: String) async throws {
+        let token = try await refreshIfNeeded()
+        var components = URLComponents(string: "https://api.spotify.com/v1/me/player/play")!
+        components.queryItems = [URLQueryItem(name: "device_id", value: deviceID)]
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "PUT"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -301,6 +359,11 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { return }
         switch http.statusCode {
+        case 202:
+            // Accepted, but the device is asleep and won't act on it.
+            throw SpotifyError.playbackUnavailable(
+                "Spotify didn't respond. Open the Spotify app and try again."
+            )
         case 200..<300:
             return
         case 401:
@@ -312,7 +375,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
             )
         case 404:
             throw SpotifyError.playbackUnavailable(
-                "Open Spotify and play anything so it has an active device, then try again."
+                "Spotify has no active device. Open the Spotify app, then try again."
             )
         default:
             throw SpotifyError.httpError(String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)")

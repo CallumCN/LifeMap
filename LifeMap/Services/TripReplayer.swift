@@ -47,7 +47,9 @@ final class TripReplayer {
 
         task = Task { [weak self] in
             var lastTick = Date()
-            var playingListenID: UUID? = UUID()  // Sentinel so the first song always starts.
+            // Starts nil so a replay beginning in silence doesn't pause music the user
+            // started themselves; pausing deactivates the Spotify device we need later.
+            var playingListenID: UUID?
             var playingSegment = -1
             while let self, !Task.isCancelled {
                 let now = Date()

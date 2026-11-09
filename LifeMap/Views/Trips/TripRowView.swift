@@ -4,61 +4,40 @@ struct TripRowView: View {
     let trip: Trip
     let filter: TripFilter
 
-    private var matching: [ListeningEvent] {
-        filter.matchingListens(in: trip)
-    }
-
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
-                        .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if trip.isActive {
-                        Text("LIVE")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.red, in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    Label(Formatters.distance(trip.distanceMeters), systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                    Label(Formatters.duration(trip.duration), systemImage: "clock")
-                    Label("\(trip.listens.count)", systemImage: "music.note.list")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
-
-                if !filter.isDefault, let first = matching.first {
-                    HStack(spacing: 6) {
-                        SourceBadge(source: first.source)
-                        Text(first.title)
-                            .lineLimit(1)
-                        Text("· \(Formatters.percent(first.fractionListened))")
-                            .foregroundStyle(.secondary)
-                        if matching.count > 1 {
-                            Text("+\(matching.count - 1) more")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .font(.caption)
-                } else if let top = trip.orderedListens.max(by: { $0.fractionListened < $1.fractionListened }) {
-                    HStack(spacing: 6) {
-                        SourceBadge(source: top.source)
-                        Text("\(top.title) — \(top.artist)")
-                            .lineLimit(1)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if trip.isActive {
+                    Text("LIVE")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.red, in: Capsule())
+                        .foregroundStyle(.white)
                 }
             }
+
+            HStack(spacing: 14) {
+                metric("point.topleft.down.to.point.bottomright.curvepath", Formatters.distance(trip.distanceMeters))
+                metric("clock", Formatters.duration(trip.duration))
+                metric("music.note.list", "\(trip.listens.count)")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    /// An icon and its value kept tight together, so the groups read as separate metrics.
+    private func metric(_ symbolName: String, _ value: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbolName)
+            Text(value)
+        }
+        .accessibilityElement(children: .combine)
     }
 }

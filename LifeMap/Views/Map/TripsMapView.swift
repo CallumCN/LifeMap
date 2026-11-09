@@ -14,16 +14,29 @@ struct TripsMapView: View {
     @State private var ranking: RankingKind = .songs
     @State private var query = ""
     @State private var selectedEntryID: String?
+    /// Route geometry cached per trip. Recomputing this inside the map content builder
+    /// made every animation frame rebuild every polyline, which is what made the map stutter.
+    @State private var routes: [UUID: TripRoute] = [:]
+    @State private var dateRange: ClosedRange<Date>?
+    /// Ranking is also cached, for the same reason as the routes.
+    @State private var rankedEntries: [RankedEntry] = []
     @FocusState private var isSearchFocused: Bool
+
+    /// Everything the map needs to draw one trip, worked out once.
+    struct TripRoute {
+        var coordinates: [CLLocationCoordinate2D]
+        var segments: [RouteSegment]
+        var color: Color
+        var title: String
+    }
 
     /// Tall enough for the Songs/Artists switch and the search field.
     private static let collapsedPanelHeight: CGFloat = 136
 
     private var entries: [RankedEntry] {
-        let ranked = RankedEntry.rank(trips.flatMap(\.listens), by: ranking)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return ranked }
-        return ranked.filter { entry in
+        guard !trimmed.isEmpty else { return rankedEntries }
+        return rankedEntries.filter { entry in
             entry.title.localizedStandardContains(trimmed)
                 || (ranking == .songs && entry.subtitle.localizedStandardContains(trimmed))
         }
@@ -49,8 +62,9 @@ struct TripsMapView: View {
                         MapCompass()
                         MapScaleView()
                     }
-                    // Inset by the panel's resting height, so the map holds still during a drag.
-                    .safeAreaPadding(.bottom, panelInset(availableHeight: proxy.size.height))
+                    // A constant inset: the map's frame never changes, so neither the panel
+                    // drag nor the camera animation can make it re-lay out.
+                    .safeAreaPadding(.bottom, Self.collapsedPanelHeight)
 
                     BottomPanel(
                         detent: $detent,
@@ -79,8 +93,9 @@ struct TripsMapView: View {
             .navigationDestination(for: Trip.self) { trip in
                 TripDetailView(trip: trip)
             }
-            .onChange(of: ranking) { _, _ in
+            .onChange(of: ranking) { _, newRanking in
                 selectedEntryID = nil
+                rankedEntries = RankedEntry.rank(trips.flatMap(\.listens), by: newRanking)
             }
             .onChange(of: isSearchFocused) { _, focused in
                 // Typing into a collapsed panel would hide the results, so open it.
@@ -92,12 +107,18 @@ struct TripsMapView: View {
                 if newDetent == .collapsed {
                     isSearchFocused = false
                 }
-                // Once the panel settles at the bottom or middle, show every trip again.
-                guard newDetent != .full,
-                      let region = RouteMath.region(fitting: trips.flatMap(\.coordinates)) else { return }
+                // Once the panel settles at the bottom or middle, refit the trips into the
+                // part of the map the panel leaves visible.
+                guard newDetent != .full else { return }
+                let coverage = newDetent == .half ? 0.45 : 0.0
+                let coordinates = routes.values.flatMap(\.coordinates)
+                guard let region = RouteMath.region(fitting: coordinates, bottomCoverage: coverage) else { return }
                 withAnimation(.snappy) {
                     position = .region(region)
                 }
+            }
+            .task(id: trips.count) {
+                rebuildRoutes()
             }
             .onChange(of: selectedTripID) { _, id in
                 // Tapping a trip's start marker opens that trip.
@@ -108,34 +129,42 @@ struct TripsMapView: View {
         }
     }
 
-    /// How much of the map's bottom the panel covers at its current resting position.
-    private func panelInset(availableHeight: CGFloat) -> CGFloat {
-        detent == .full
-            ? 0
-            : BottomPanelMetrics.height(for: detent, collapsedHeight: Self.collapsedPanelHeight, availableHeight: availableHeight)
+    /// Works out each trip's geometry and colour once, instead of on every frame.
+    private func rebuildRoutes() {
+        let dates = trips.map(\.startDate).sorted()
+        let range = dates.first.flatMap { first in dates.last.map { first...$0 } }
+        dateRange = range
+        rankedEntries = RankedEntry.rank(trips.flatMap(\.listens), by: ranking)
+        routes = Dictionary(uniqueKeysWithValues: trips.map { trip in
+            (trip.id, TripRoute(
+                coordinates: trip.coordinates,
+                segments: trip.routeSegments(),
+                color: TripPalette.color(for: trip.startDate, in: range),
+                title: Formatters.tripTitle(start: trip.startDate, end: trip.endDate)
+            ))
+        })
     }
 
     // MARK: - Map content
 
     @MapContentBuilder
     private func tripContent(for trip: Trip) -> some MapContent {
-        let tripColor = TripPalette.color(for: trip)
-        let coordinates = trip.coordinates
-
-        if let entry = selectedEntry {
-            ForEach(trip.routeSegments()) { segment in
-                segmentContent(segment, highlighting: entry)
+        if let route = routes[trip.id] {
+            if let entry = selectedEntry {
+                ForEach(route.segments) { segment in
+                    segmentContent(segment, highlighting: entry)
+                }
+            } else if route.coordinates.count > 1 {
+                MapPolyline(coordinates: route.coordinates)
+                    .stroke(route.color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
-        } else if coordinates.count > 1 {
-            MapPolyline(coordinates: coordinates)
-                .stroke(tripColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-        }
 
-        if let start = coordinates.first {
-            Annotation(Formatters.tripTitle(start: trip.startDate, end: trip.endDate), coordinate: start, anchor: .center) {
-                TripStartDot(color: tripColor)
+            if let start = route.coordinates.first {
+                Annotation(route.title, coordinate: start, anchor: .center) {
+                    TripStartDot(color: route.color)
+                }
+                .tag(trip.id)
             }
-            .tag(trip.id)
         }
     }
 

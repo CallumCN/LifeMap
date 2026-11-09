@@ -46,7 +46,10 @@ extension Trip {
 
 enum RouteMath {
     /// A map region that shows every coordinate with some breathing room around them.
-    static func region(fitting coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion? {
+    ///
+    /// `bottomCoverage` is the fraction of the map hidden behind a panel. The region is
+    /// stretched and shifted so the coordinates land in the part that stays visible.
+    static func region(fitting coordinates: [CLLocationCoordinate2D], bottomCoverage: Double = 0) -> MKCoordinateRegion? {
         guard let first = coordinates.first else { return nil }
         var minLatitude = first.latitude
         var maxLatitude = first.latitude
@@ -58,16 +61,24 @@ enum RouteMath {
             minLongitude = min(minLongitude, coordinate.longitude)
             maxLongitude = max(maxLongitude, coordinate.longitude)
         }
-        let center = CLLocationCoordinate2D(
-            latitude: (minLatitude + maxLatitude) / 2,
-            longitude: (minLongitude + maxLongitude) / 2
-        )
         // Pad by 30% and never zoom in tighter than a few hundred metres.
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((maxLatitude - minLatitude) * 1.3, 0.004),
-            longitudeDelta: max((maxLongitude - minLongitude) * 1.3, 0.004)
+        var latitudeDelta = max((maxLatitude - minLatitude) * 1.3, 0.004)
+        let longitudeDelta = max((maxLongitude - minLongitude) * 1.3, 0.004)
+        var centerLatitude = (minLatitude + maxLatitude) / 2
+
+        // Grow the region so the visible slice still fits the route, then push the centre
+        // south so the route sits above the panel.
+        let visible = max(0.2, 1 - bottomCoverage)
+        if bottomCoverage > 0 {
+            let grown = latitudeDelta / visible
+            centerLatitude -= (grown - latitudeDelta) / 2
+            latitudeDelta = grown
+        }
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLatitude, longitude: (minLongitude + maxLongitude) / 2),
+            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
         )
-        return MKCoordinateRegion(center: center, span: span)
     }
 
     /// Interpolates a position along chronologically ordered track points.
