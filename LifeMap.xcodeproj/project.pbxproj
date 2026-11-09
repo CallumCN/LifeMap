@@ -6,8 +6,14 @@
 	objectVersion = 90;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1A07391530A26F5F00B443AA /* SpotifyiOS in Frameworks */ = {isa = PBXBuildFile; productRef = 1A07391430A26F5F00B443AA /* SpotifyiOS */; };
+		1A07391730A26F8100B443AA /* ios-sdk in Resources */ = {isa = PBXBuildFile; fileRef = 1A07391630A26F8100B443AA /* ios-sdk */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* LifeMap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LifeMap.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A07391630A26F8100B443AA /* ios-sdk */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "ios-sdk"; path = "/Users/callumcn/Documents/GitHub/LifeMap/LifeMap/ios-sdk"; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -35,6 +41,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				1A07391530A26F5F00B443AA /* SpotifyiOS in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -45,6 +52,7 @@
 			children = (
 				000000000000000000000010 /* LifeMap */,
 				000000000000000000000020 /* Products */,
+				1A07391630A26F8100B443AA /* ios-sdk */,
 			);
 			sourceTree = "<group>";
 		};
@@ -73,6 +81,9 @@
 				000000000000000000000010 /* LifeMap */,
 			);
 			name = LifeMap;
+			packageProductDependencies = (
+				1A07391430A26F5F00B443AA /* SpotifyiOS */,
+			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* LifeMap.app */;
 			productType = "com.apple.product-type.application";
@@ -101,6 +112,9 @@
 			);
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1A07391330A26F5F00B443AA /* XCRemoteSwiftPackageReference "ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -115,6 +129,7 @@
 		000000000000000140000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
+				1A07391730A26F8100B443AA /* ios-sdk in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
@@ -366,6 +381,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		1A07391330A26F5F00B443AA /* XCRemoteSwiftPackageReference "ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/spotify/ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1A07391430A26F5F00B443AA /* SpotifyiOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A07391330A26F5F00B443AA /* XCRemoteSwiftPackageReference "ios-sdk" */;
+			productName = SpotifyiOS;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
 }

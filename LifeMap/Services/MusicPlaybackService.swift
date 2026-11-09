@@ -98,25 +98,28 @@ final class MusicPlaybackService {
     }
 
     /// Plays through App Remote where possible, since it can launch the Spotify app.
-    /// Falls back to the Web API, which only works if Spotify is already awake.
+    /// Falls back to the Web API, which only reaches a device Spotify already considers
+    /// awake but can also drive a desktop or speaker.
     private func playSpotify(trackID: String, offset: Double) async throws {
         if SpotifyAppRemoteController.isSDKAvailable, !appRemote.isSpotifyMissing {
-            do {
-                if !appRemote.isConnected {
-                    let token = try await spotify.currentAccessToken()
-                    try await appRemote.connect(accessToken: token)
-                }
+            if !appRemote.isConnected {
+                let token = try await spotify.currentAccessToken()
+                try? await appRemote.connect(accessToken: token)
+            }
+            if appRemote.isConnected {
                 try await appRemote.play(trackID: trackID, positionSeconds: offset)
                 usingAppRemote = true
                 return
-            } catch {
-                // Fall through; the Web API may still reach a desktop or speaker.
-                lastError = error.localizedDescription
+            }
+            // Spotify isn't running. Launching it starts the track there and hands control
+            // back to LifeMap, after which later commands go over the connection.
+            if appRemote.wake(playing: trackID) {
+                usingAppRemote = true
+                return
             }
         }
         try await spotify.startPlayback(trackID: trackID, positionSeconds: offset)
         usingAppRemote = false
-        lastError = nil
     }
 
     private func playAppleMusic(trackID: String, offset: Double) async throws {

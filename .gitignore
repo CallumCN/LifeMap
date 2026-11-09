@@ -1,0 +1,10 @@
+# A manual clone of Spotify's SDK sometimes ends up here. The build doesn't use it:
+# the package is resolved from its GitHub URL and pinned in Package.resolved.
+ios-sdk/
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store

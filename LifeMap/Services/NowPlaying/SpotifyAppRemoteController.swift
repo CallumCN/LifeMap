@@ -1,8 +1,5 @@
 import Foundation
 import Observation
-#if canImport(UIKit)
-import UIKit
-#endif
 #if canImport(SpotifyiOS)
 import SpotifyiOS
 #endif
@@ -13,10 +10,8 @@ import SpotifyiOS
 /// unless the person has opened Spotify recently. App Remote talks to the Spotify app on
 /// this device directly and can launch it, so a trip can be replayed from cold.
 ///
-/// The SDK ships as a binary framework and is optional: without it the whole type compiles
-/// to stubs that report themselves unavailable, and `MusicPlaybackService` falls back to
-/// the Web API. Add it with File > Add Package Dependencies in Xcode, using
-/// `https://github.com/spotify/ios-sdk`.
+/// The SDK is an optional dependency: without it the whole type compiles to stubs that
+/// report themselves unavailable, and `MusicPlaybackService` falls back to the Web API.
 @Observable
 @MainActor
 final class SpotifyAppRemoteController {
@@ -31,6 +26,9 @@ final class SpotifyAppRemoteController {
 
     private(set) var isConnected = false
     private(set) var lastError: String?
+    /// Set once Spotify reports it isn't installed, so later replays skip straight to the
+    /// Web API, which can still reach a desktop or speaker.
+    private(set) var isSpotifyMissing = false
 
     enum AppRemoteError: LocalizedError {
         case sdkMissing
@@ -52,12 +50,9 @@ final class SpotifyAppRemoteController {
         }
     }
 
-    /// Set once a connection attempt has reported that Spotify isn't on this device, so
-    /// later replays skip straight to the Web API instead of trying again.
-    private(set) var isSpotifyMissing = false
-
     #if canImport(SpotifyiOS)
 
+    @ObservationIgnored
     private lazy var appRemote: SPTAppRemote = {
         let configuration = SPTConfiguration(
             clientID: AppSettings.spotifyClientID,
@@ -68,53 +63,50 @@ final class SpotifyAppRemoteController {
         return remote
     }()
 
+    @ObservationIgnored
     private lazy var delegateProxy = AppRemoteDelegateProxy(owner: self)
+
     /// Resumed once a connection attempt succeeds or fails.
+    @ObservationIgnored
     private var connectionContinuation: CheckedContinuation<Void, Error>?
 
-    /// Connects to the Spotify app, launching it first if it isn't running.
+    /// Connects to a Spotify app that is already running.
     ///
-    /// `accessToken` comes from the same PKCE sign-in the Web API uses and must include
-    /// the `app-remote-control` scope.
-    func connect(accessToken: String, wakeIfNeeded: Bool = true) async throws {
+    /// `accessToken` comes from the same PKCE sign-in the Web API uses and must carry the
+    /// `app-remote-control` scope. Throws if Spotify isn't running, in which case the
+    /// caller should fall back to `wake(playing:)`.
+    func connect(accessToken: String) async throws {
         guard !isConnected else { return }
         guard !isSpotifyMissing else { throw AppRemoteError.spotifyNotInstalled }
         appRemote.connectionParameters.accessToken = accessToken
-
-        do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                connectionContinuation = continuation
-                appRemote.connect()
-            }
-        } catch {
-            // Spotify is installed but asleep: `wake` launches it, which also connects.
-            guard wakeIfNeeded else { throw error }
-            try await wake()
-        }
+        try await awaitConnection { [appRemote] in appRemote.connect() }
     }
 
-    /// Brings the Spotify app to the foreground so it can accept a connection. Control
-    /// returns to LifeMap through the redirect URL once Spotify has started.
-    private func wake() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connectionContinuation = continuation
-            appRemote.authorizeAndPlayURI("") { installed in
-                guard !installed else { return }
-                Task { @MainActor in
-                    self.isSpotifyMissing = true
-                    self.finishConnecting(with: AppRemoteError.spotifyNotInstalled)
-                }
-            }
+    /// Launches the Spotify app and starts a track there.
+    ///
+    /// This is the only way to reach Spotify when it isn't running. It brings Spotify to
+    /// the front; iOS returns to LifeMap through the redirect URL, which arrives in
+    /// `handleCallback(url:)` and completes the connection for later commands.
+    /// Returns false when Spotify isn't installed.
+    @discardableResult
+    func wake(playing trackID: String?) -> Bool {
+        let uri = trackID.map { "spotify:track:\($0)" } ?? ""
+        let installed = appRemote.authorizeAndPlayURI(uri)
+        if !installed {
+            isSpotifyMissing = true
+            lastError = AppRemoteError.spotifyNotInstalled.localizedDescription
         }
+        return installed
     }
 
-    /// Hands back the parameters Spotify returns on the redirect URL after waking.
+    /// Takes the token Spotify returns on the redirect URL after being launched.
     func handleCallback(url: URL) {
-        let parameters = appRemote.authorizationParameters(from: url)
-        if let token = parameters?[SPTAppRemoteAccessTokenKey] {
+        guard let parameters = appRemote.authorizationParameters(from: url) else { return }
+        if let token = parameters[SPTAppRemoteAccessTokenKey] {
             appRemote.connectionParameters.accessToken = token
             appRemote.connect()
-        } else if let error = parameters?[SPTAppRemoteErrorDescriptionKey] {
+        } else if let error = parameters[SPTAppRemoteErrorDescriptionKey] {
+            lastError = error
             finishConnecting(with: AppRemoteError.failed(error))
         }
     }
@@ -148,12 +140,12 @@ final class SpotifyAppRemoteController {
 
     func pause() async throws {
         try await perform { playerAPI, done in
-            playerAPI.pause(callback: done)
+            playerAPI.pause(done)
         }
     }
 
     /// Runs one player command and waits for Spotify's acknowledgement.
-    private func perform(_ command: @escaping (SPTAppRemotePlayerAPI, @escaping SPTAppRemoteCallback) -> Void) async throws {
+    private func perform(_ command: (SPTAppRemotePlayerAPI, @escaping SPTAppRemoteCallback) -> Void) async throws {
         guard isConnected, let playerAPI = appRemote.playerAPI else {
             throw AppRemoteError.notConnected
         }
@@ -164,6 +156,19 @@ final class SpotifyAppRemoteController {
                 } else {
                     continuation.resume()
                 }
+            }
+        }
+    }
+
+    /// Starts a connection attempt and waits for a delegate callback, giving up rather
+    /// than hanging if Spotify never answers.
+    private func awaitConnection(timeout: Duration = .seconds(6), start: @escaping () -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connectionContinuation = continuation
+            start()
+            Task {
+                try? await Task.sleep(for: timeout)
+                finishConnecting(with: AppRemoteError.failed("Spotify didn't respond."))
             }
         }
     }
@@ -179,9 +184,11 @@ final class SpotifyAppRemoteController {
     fileprivate func didDisconnect(error: Error?) {
         isConnected = false
         if let error { lastError = error.localizedDescription }
-        finishConnecting(with: error.map { AppRemoteError.failed($0.localizedDescription) })
+        finishConnecting(with: error.map { AppRemoteError.failed($0.localizedDescription) }
+            ?? AppRemoteError.notConnected)
     }
 
+    /// Resumes a pending connection attempt, if there is one. Safe to call repeatedly.
     private func finishConnecting(with error: Error?) {
         guard let continuation = connectionContinuation else { return }
         connectionContinuation = nil
@@ -196,9 +203,12 @@ final class SpotifyAppRemoteController {
 
     // MARK: - Stubs used when the SDK isn't linked
 
-    func connect(accessToken: String, wakeIfNeeded: Bool = true) async throws {
+    func connect(accessToken: String) async throws {
         throw AppRemoteError.sdkMissing
     }
+
+    @discardableResult
+    func wake(playing trackID: String?) -> Bool { false }
 
     func handleCallback(url: URL) {}
     func reconnectIfNeeded() {}
