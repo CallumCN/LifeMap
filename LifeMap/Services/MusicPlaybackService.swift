@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import MusicKit
 
 /// Plays a recorded song again on the service it came from, starting at a chosen offset.
@@ -29,6 +30,9 @@ final class MusicPlaybackService {
     /// Starts the song from `listen` at `offsetSeconds` into the track.
     func play(_ listen: ListeningEvent, offsetSeconds: Double) async {
         lastError = nil
+        SpotifyNowPlayingProvider.log.notice(
+            "play source=\(listen.source.rawValue, privacy: .public) track=\(listen.trackID, privacy: .public) title=\(listen.title, privacy: .public) offset=\(Int(offsetSeconds))"
+        )
         // Silence whatever we started before switching services.
         if let currentSource, currentSource != listen.source {
             await pause(source: currentSource)
@@ -46,6 +50,7 @@ final class MusicPlaybackService {
             currentListenID = listen.id
             isPlaying = true
         } catch {
+            SpotifyNowPlayingProvider.log.error("play failed: \(error.localizedDescription, privacy: .public)")
             lastError = error.localizedDescription
             isPlaying = false
             currentListenID = nil
@@ -101,12 +106,18 @@ final class MusicPlaybackService {
     /// Falls back to the Web API, which only reaches a device Spotify already considers
     /// awake but can also drive a desktop or speaker.
     private func playSpotify(trackID: String, offset: Double) async throws {
+        let log = SpotifyNowPlayingProvider.log
         if SpotifyAppRemoteController.isSDKAvailable, !appRemote.isSpotifyMissing {
             if !appRemote.isConnected {
                 let token = try await spotify.currentAccessToken()
-                try? await appRemote.connect(accessToken: token)
+                do {
+                    try await appRemote.connect(accessToken: token)
+                } catch {
+                    log.notice("App Remote connect failed: \(error.localizedDescription, privacy: .public)")
+                }
             }
             if appRemote.isConnected {
+                log.notice("Playing via App Remote")
                 try await appRemote.play(trackID: trackID, positionSeconds: offset)
                 usingAppRemote = true
                 return
@@ -114,9 +125,13 @@ final class MusicPlaybackService {
             // Spotify isn't running. Launching it starts the track there and hands control
             // back to LifeMap, after which later commands go over the connection.
             if appRemote.wake(playing: trackID) {
+                log.notice("Launching Spotify to play the track")
                 usingAppRemote = true
                 return
             }
+            log.notice("App Remote unavailable; falling back to the Web API")
+        } else {
+            log.notice("App Remote not usable (sdk=\(SpotifyAppRemoteController.isSDKAvailable), missing=\(self.appRemote.isSpotifyMissing))")
         }
         try await spotify.startPlayback(trackID: trackID, positionSeconds: offset)
         usingAppRemote = false
@@ -126,6 +141,7 @@ final class MusicPlaybackService {
         guard MusicAuthorization.currentStatus == .authorized else {
             throw PlaybackError.unsupported("Connect Apple Music in Settings first.")
         }
+        SpotifyNowPlayingProvider.log.notice("Looking up Apple Music catalog song \(trackID, privacy: .public)")
         let request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(trackID))
         let response = try await request.response()
         guard let song = response.items.first else {

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import CryptoKit
 import AuthenticationServices
 #if canImport(UIKit)
@@ -22,6 +23,8 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     private var tokens: SpotifyTokens?
     /// Kept alive for the duration of a sign-in because the session only holds it weakly.
     private var presentationContext: WebAuthPresentationContext?
+
+    static let log = Logger(subsystem: "com.callumcn.LifeMap", category: "playback")
 
     private static let tokenKey = "spotify.tokens"
     private static let scopes = "user-read-currently-playing user-read-playback-state user-read-recently-played user-modify-playback-state app-remote-control streaming"
@@ -310,16 +313,14 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     func startPlayback(trackID: String, positionSeconds: Double) async throws {
         guard connectionState.isConnected else { throw SpotifyError.notConnected }
         let devices = try await availableDevices().filter { !$0.is_restricted && $0.id != nil }
+        Self.log.debug("Spotify devices: \(devices.map { "\($0.name) active=\($0.is_active)" }.joined(separator: ", "), privacy: .public)")
         guard let device = devices.first(where: \.is_active) ?? devices.first, let deviceID = device.id else {
             throw SpotifyError.playbackUnavailable(
                 "No Spotify device is available. Open the Spotify app once so it can receive playback, then try again."
             )
         }
-        if !device.is_active {
-            // Wake the device first, otherwise the play command is accepted and dropped.
-            try await transferPlayback(to: deviceID)
-            try? await Task.sleep(for: .milliseconds(400))
-        }
+        // Play directly at the chosen device. Transferring first would pause whatever is
+        // playing, leaving silence behind if the play command then fails.
         try await sendPlay(trackID: trackID, positionSeconds: positionSeconds, deviceID: deviceID)
     }
 
@@ -364,6 +365,7 @@ final class SpotifyNowPlayingProvider: NowPlayingProvider {
     private func sendPlayerCommand(_ request: URLRequest) async throws {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { return }
+        Self.log.debug("Spotify \(request.url?.path ?? "?", privacy: .public) -> HTTP \(http.statusCode) \(String(data: data, encoding: .utf8) ?? "", privacy: .public)")
         switch http.statusCode {
         case 202:
             // Accepted, but the device is asleep and won't act on it.

@@ -42,6 +42,21 @@ struct TripDetailView: View {
                     }
                 }
             }
+            .overlay(alignment: .top) {
+                // Shown over the map so a playback failure is visible even when the
+                // songs panel is collapsed.
+                if let error = coordinator.playback.lastError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: coordinator.playback.lastError)
         }
         .navigationTitle(Formatters.tripTitle(start: trip.startDate, end: trip.endDate))
         .navigationBarTitleDisplayMode(.inline)
